@@ -12,6 +12,20 @@ Unofficial AI-generated minutes based on a spoken transcript. Not approved by th
 
 Official city sources are used to check names; [name uncertain] marks an unverified spelling or identity.
 
+## At a glance
+
+- **Staggers Road improvements:** Awarded Contract LA 26-007 for the Staggers Road Improvement Project to SFMS LLC [name uncertain] for $279,155.99 with a 7.4% contingency.
+
+- **Cybersecurity and interview systems:** Approved a one-year cybersecurity services renewal agreement with Motorola Solutions Inc. for $60,300 and a five-year agreement with Axon Enterprise for police interview room systems for $65,417.40.
+
+- **Proposals entering public hearings:** Introduced and held first public hearings for two resolutions, two ordinances, and a charter amendment resolution concerning the budget preparation timeline.
+
+- **Voting access and waste collection:** Discussed community voting delays at the Robert J. DiPetro Community Center and city trash, recycling, and composting collection policies.
+
+## Worth a closer look
+
+> **Resident impact:** At [00:15:24], Mayor Keith R. Sydnor and councilmembers addressed severe voting delays and equipment limitations (single scanner machine) at the Robert J. DiPetro Community Center polling place on November 3rd, noting that elections are administered by the Prince George's County Board of Elections rather than the city. Residents can review councilmember inquiries and letters to county election officials on social media and check future county election updates for administrative improvements.
+
 ## Meeting information
 - Date: 2026-11-09
 - Meeting type: regular meeting
