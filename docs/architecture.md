@@ -8,6 +8,12 @@ The goal is next-morning, transcript-only unofficial summaries using existing Ch
 4. Codex reads only the generated archive Doc. `scripts/validate-summary.js` reads the local source privately and checks exact metadata, every timestamp, allowed links, and payload size. An unsupported timestamp blocks that summary; the agent must not repair it.
 5. Accepted summaries go through authenticated `gh api` to `repository_dispatch`. GitHub Actions validates and commits one Markdown file per video. Cloudflare Pages Git integration builds from `main`.
 
+## Current summarizer: scheduled Claude routine
+
+Steps 3–5 currently run in a Claude Code cloud routine instead of Workspace Studio, selected by `studio_flow_enabled: false` in `.local/setup-state.json`. The local run still collects captions and uploads transcripts, because YouTube refuses caption requests from cloud servers (see the Apps Script finding below). At 8:30 AM Eastern the routine reads new transcripts from the Drive folder through the Google Drive connector, writes the summary under the same contract in `docs/gemini-prompt.md`, runs the same source validator against a byte-checked copy of the transcript, and pushes the meeting file on a `claude/minutes-<video_id>` branch. The `Promote routine minutes` workflow checks that the branch only adds new well-formed meeting files and commits them to `main`. The full procedure is in `docs/claude-summary-prompt.md`. Unlike the Studio path, the summarizing agent reads the transcript; transcripts still never enter the repository.
+
+To switch back to Gemini, re-enable the Studio flow, set `studio_flow_enabled` to true, and pause the routine at claude.ai/code/routines.
+
 ## Verified integration evidence
 
 On November 16, 2026, a real November 9 council transcript automatically produced an archive Doc, passed source validation, completed the publishing workflow, and appeared on the public Pages site. A subsequent real Task Scheduler run discovered six recent meetings, skipped the published video, collected and uploaded two new transcripts, and retrieved their Studio archive Docs. All three selected summaries (including an older archive) contained unsupported timestamps and were held; it submitted no dispatches. The task completed with exit code zero because the workflow ran correctly, so inspect its private result/status files for publication and validation outcomes. Timestamp validation does not prove every statement in a summary; these remain clearly labeled unofficial AI-generated summaries.

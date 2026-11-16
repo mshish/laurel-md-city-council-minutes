@@ -5,7 +5,7 @@ The Task Scheduler job runs the workflow as the signed-in Windows user at 7:00 A
 ## Before the first run
 
 1. Configure `.local/setup-state.json` locally. It is ignored by Git and must contain the repository, private transcript and archive folder IDs, readiness flags, plus absolute `python_path` and `node_path` values. Point these to the installed local-collector virtual environment and the official Node.js 22 executable under `.local/tools/node22`. Do not put credentials in the file. The wrapper validates the two folder IDs and injects them into the Codex prompt via stdin; it does not print them.
-2. Confirm `collector_configured`, `collector_authorized`, and `studio_flow_enabled` are all `true`. The Studio flow should be **When an item is added to the private transcript folder → Ask Gemini → Create Google Doc in the archive folder**. The separate publisher Apps Script and any publisher PAT are not used.
+2. Confirm `collector_configured` and `collector_authorized` are `true`. `studio_flow_enabled` selects the summarizer: `true` for the Studio flow below, `false` for the scheduled Claude routine (`docs/claude-summary-prompt.md`), in which case this run stops after uploading transcripts. The Studio flow should be **When an item is added to the private transcript folder → Ask Gemini → Create Google Doc in the archive folder**. The separate publisher Apps Script and any publisher PAT are not used.
 3. Install the local collector dependencies in its virtual environment. From the repository root:
 
    ```powershell

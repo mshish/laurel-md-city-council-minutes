@@ -1,0 +1,55 @@
+name: Promote routine minutes
+
+# The scheduled Claude routine validates each summary against its transcript, then pushes
+# it on a claude/minutes-* branch (cloud sessions push to claude/ branches). This job
+# re-checks that the branch only adds well-formed new meeting files, then commits them
+# to main and deletes the branch.
+on:
+  push:
+    branches: ['claude/minutes-*']
+
+permissions: {}
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: publish-minutes-main
+      queue: max
+      cancel-in-progress: false
+    steps:
+      - name: Check out the branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run JavaScript tests
+        run: npm test
+
+      - name: Check the branch only adds new meeting files
+        run: node scripts/check-branch-meetings.js origin/main > "$RUNNER_TEMP/files.txt"
+
+      - name: Commit the files onto main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B promote origin/main
+          xargs -a "$RUNNER_TEMP/files.txt" git checkout "$GITHUB_SHA" --
+          npm run build
+          git add -- src/content/meetings
+          git commit -m "Add council minutes from the scheduled summary routine"
+          git push origin HEAD:main
+
+      - name: Delete the routine branch
+        run: git push origin --delete "$GITHUB_REF_NAME"
