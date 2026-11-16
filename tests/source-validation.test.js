@@ -160,6 +160,28 @@ test('promotes only exact known section labels to second-level headings', () => 
   assert.match(result.minutesText, /## At a glance\n\nAt a glance, the meeting covered these topics\.\n\n## Worth a closer look\n\nWorth a closer look at these details\.\n\n## Meeting information\n\nThe Meeting information section lists attendance\.\n\n## Decisions and votes\n\n## Discussion by agenda item\n\n## Public comment\n\n## Action items and follow-up\n\n## Transcript limitations/);
 });
 
+test('restores agenda, decision, and comment headings only from exact paragraph prefixes', () => {
+  const archive = {
+    paragraphs: [
+      {
+        text: 'title: "Mayor and City Council Meeting" date: "2026-11-14" video_id: "abcdefghijk"',
+        namedStyleType: 'NORMAL_TEXT',
+        isListItem: false
+      },
+      { text: 'Agenda item: Waste collection', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'The Agenda item: prefix appears in this sentence.', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'Decision: Contract renewal', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'The Decision: prefix appears in this sentence.', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'Comment topic: Voting access', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'The Comment topic: prefix appears in this sentence.', namedStyleType: 'NORMAL_TEXT', isListItem: false }
+    ]
+  };
+  const result = minutesFromArchiveJson(JSON.stringify(archive), source);
+  assert.equal(result.ok, true);
+  assert.match(result.minutesText,
+    /### Agenda item: Waste collection\n\nThe Agenda item: prefix appears in this sentence\.\n\n### Decision: Contract renewal\n\nThe Decision: prefix appears in this sentence\.\n\n### Comment topic: Voting access\n\nThe Comment topic: prefix appears in this sentence\./);
+});
+
 test('restores only exact callout-label prefixes from the archived plain text', () => {
   const archive = {
     paragraphs: [
@@ -168,7 +190,8 @@ test('restores only exact callout-label prefixes from the archived plain text', 
         namedStyleType: 'NORMAL_TEXT',
         isListItem: false
       },
-      { text: 'Look closer: At [00:15:16], the Council discussed the budget.', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'Agenda item: Budget', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'Look closer: Topic: Agenda item: Budget | At [00:15:16], the Council discussed the budget.', namedStyleType: 'NORMAL_TEXT', isListItem: false },
       { text: 'The Resident impact: label appears later in this sentence.', namedStyleType: 'NORMAL_TEXT', isListItem: false },
       { text: 'Resident impact: At [00:22:09], the Council discussed the timeline.', namedStyleType: 'NORMAL_TEXT', isListItem: false },
       { text: 'Open question: At [00:15:16], no date was stated.', namedStyleType: 'NORMAL_TEXT', isListItem: false }
@@ -177,7 +200,7 @@ test('restores only exact callout-label prefixes from the archived plain text', 
   const result = minutesFromArchiveJson(JSON.stringify(archive), source);
   assert.equal(result.ok, true);
   assert.match(result.minutesText,
-    /> \*\*Look closer:\*\* At \[00:15:16\], the Council discussed the budget\.\n\nThe Resident impact: label appears later in this sentence\.\n\n> \*\*Resident impact:\*\* At \[00:22:09\], the Council discussed the timeline\.\n\n> \*\*Open question:\*\* At \[00:15:16\], no date was stated\./);
+    /### Agenda item: Budget\n\n> \*\*Look closer:\*\* Topic: Agenda item: Budget \| At \[00:15:16\], the Council discussed the budget\.\n\nThe Resident impact: label appears later in this sentence\.\n\n> \*\*Resident impact:\*\* At \[00:22:09\], the Council discussed the timeline\.\n\n> \*\*Open question:\*\* At \[00:15:16\], no date was stated\./);
 });
 
 test('keeps adjacent archived callouts as separate rendered blocks with their own classes', () => {

@@ -126,7 +126,7 @@ test('links plain timestamps to the source video without rewriting code or exist
   assert.equal((repeated.match(/href="https:\/\/www\.youtube\.com\/watch\?v=/g) ?? []).length, 2);
 });
 
-test('meeting page places the contents navigation before prose and has one compact AI disclaimer', () => {
+test('meeting page places the section navigation before the sections and has one compact AI disclaimer', () => {
   const meeting = {
     title,
     date: '2026-11-15',
@@ -136,7 +136,8 @@ test('meeting page places the contents navigation before prose and has one compa
     markdown: `Names follow the transcript; [name uncertain] marks an unverified spelling or identity.\n\n## Decisions\n\n> **Open question:** Verify the final vote.\n`,
   };
   const html = renderMeetingPage(meeting);
-  assert.ok(html.indexOf('aria-label="On this page"') < html.indexOf('class="prose"'));
+  assert.ok(html.indexOf('aria-label="On this page"') > html.indexOf('class="prose"'));
+  assert.ok(html.indexOf('aria-label="On this page"') < html.indexOf('id="decisions"'));
   assert.match(html, /Names follow the transcript; \[name uncertain\] marks an unverified spelling or identity\./);
   assert.equal((html.match(/Unofficial AI summary\. May contain mistakes; verify against the recording\./g) ?? []).length, 1);
   assert.doesNotMatch(html, /class="notice"/);
@@ -183,4 +184,43 @@ test('publishing is idempotent per video and refuses changed metadata or content
 test('rejects a repository dispatch JSON body over GitHub’s 64 KiB limit', () => {
   const oversized = dispatch({ markdown: frontmatter() + '\n\n' + '\n'.repeat(34_000) });
   assert.throws(() => validatePayload(oversized), /64 KiB/);
+});
+
+test('meeting page renders one reading column with flags linked to their agenda item', () => {
+  const source = [
+    '## At a glance', '', '- **Road contract:** Awarded the contract [00:01:00]', '',
+    '## Worth a closer look', '',
+    '> **Open question:** Topic: Agenda item: Road contract | At [00:01:30], no start date was given. Check the next agenda.', '',
+    '## Meeting information', '', '- Date: 2026-11-15', '',
+    '## Decisions and votes', '', '### Decision: Road contract', '', 'Motion: Award the contract.', '', 'Result: Motion carries', '',
+    'Vote: Smith (Yes)', '', 'Timestamp: [00:01:00]', '',
+    '### Decision: Tied item', '', 'Motion: Change the service.', '', 'Result: Result not stated in transcript.', '',
+    '## Discussion by agenda item', '', '### Agenda item: Road contract', '', 'What happened: Staff presented bids.', '',
+    'Outcome / next step: Contract awarded.', '', 'Timestamp: [00:00:50]', '',
+  ].join('\n');
+  const html = renderMarkdown(source, videoId);
+  assert.doesNotMatch(html, /grid|<details/);
+  assert.match(html, /<article class="flag callout-open-question" id="flag-road-contract">/);
+  assert.match(html, /<h3 class="flag-title">Road contract<\/h3>/);
+  assert.doesNotMatch(html, /Topic: Agenda item/);
+  assert.match(html, /<a href="#agenda-item-road-contract" class="flag-link">/);
+  assert.match(html, /<a href="#flag-road-contract" class="flag-link">Flagged above/);
+  assert.match(html, /<span class="result result-passed">Motion carries<\/span>/);
+  assert.match(html, /<span class="result result-unclear">Result not stated in transcript\.<\/span>/);
+  assert.ok(html.indexOf('At a glance') < html.indexOf('Worth a closer look'));
+  assert.ok(html.indexOf('Worth a closer look') < html.indexOf('aria-label="On this page"'));
+  assert.ok(html.indexOf('Discussion by agenda item') < html.indexOf('Meeting information'), 'reference sections move to the end');
+});
+
+test('legacy one-line agenda and decision summaries become titled items', () => {
+  const source = [
+    '## Decisions and votes', '', '- Road Contract (LA 1): Motion to award the contract.', '- Mover: Councilwoman A',
+    '- Recorded result: Motion carries (Roll call vote: A - Yes)', '- Timestamp: [00:02:00] - [00:03:00]', '',
+    '## Discussion by agenda item', '', '- Road Contract ([00:02:00] - [00:03:00]): Staff presented the bid.', '',
+  ].join('\n');
+  const html = renderMarkdown(source, videoId);
+  assert.match(html, /<h3>Road Contract \(LA 1\)<\/h3><span class="result result-passed">Motion carries<\/span>/);
+  assert.match(html, /<span class="field-label">Vote<\/span> Roll call vote: A - Yes/);
+  assert.match(html, /<h3 id="agenda-road-contract">Road Contract<\/h3>/);
+  assert.match(html, /<p>Staff presented the bid\.<\/p>/);
 });

@@ -62,10 +62,7 @@ async function readMeetings() {
 }
 
 export function renderMeetingPage(meeting) {
-  const { html, headings } = renderMarkdownWithToc(meeting.markdown, meeting.video_id, meeting.title);
-  const toc = headings.length
-    ? `<nav class="contents" aria-label="On this page"><p class="contents-title">On this page</p><ol>${headings.map(({ id, text, level }) => `<li class="contents-level-${level}"><a href="#${escapeHtml(id)}">${escapeHtml(text)}</a></li>`).join('')}</ol></nav>`
-    : '';
+  const { html } = renderMarkdownWithToc(meeting.markdown, meeting.video_id, meeting.title);
   const fileName = path.basename(meeting.file, '.md');
   return page({
     title: meeting.title,
@@ -74,7 +71,6 @@ export function renderMeetingPage(meeting) {
     content: `<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/">All meetings</a><span aria-hidden="true">/</span><span>${escapeHtml(meeting.date)}</span></nav>
 <article class="minutes">
   <header class="minutes-header"><p class="eyebrow">Laurel City Council · <time datetime="${escapeHtml(meeting.date)}">${escapeHtml(meeting.date)}</time></p><h1>${escapeHtml(meeting.title)}</h1><p class="source-link"><a href="${escapeHtml(meeting.video_url)}" rel="noopener noreferrer" target="_blank">Open the source recording on YouTube <span aria-hidden="true">↗</span></a></p></header>
-  ${toc}
   <div class="prose">${html}</div>
 </article>`,
   });

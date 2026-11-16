@@ -43,10 +43,15 @@ Every timestamp in the minutes must be copied verbatim from an actual [HH:MM:SS]
 
 Formatting examples below are synthetic and exist only to demonstrate formatting. They are not meeting evidence. Never copy their names, facts, or timestamps into the minutes. Use only names, facts, and exact timestamps from this meeting's transcript, with the limited official-directory name check described above.
 
-Example 1 — neutral callout about a vote without an announced result:
+Example 1 — neutral issue-specific callout about a vote without an announced result:
 Synthetic transcript: `[00:31:22] The vote was two in favor and two opposed. The chair moved to the next item without announcing a disposition.`
 Example output:
-> **Open question:** At [00:31:22], the transcript records two votes in favor and two opposed, then the chair moved to the next item without announcing a result. The disposition is not stated in this transcript; check the official minutes for the recorded outcome.
+### Agenda item: Service change
+What happened: The vote was two in favor and two opposed; the chair moved to the next item without announcing a result.
+Outcome / next step: Result not stated in transcript.
+Timestamp: [00:31:22]
+
+> **Open question:** Topic: Agenda item: Service change | At [00:31:22], the transcript records two votes in favor and two opposed, but no result is announced. Check the official minutes for the disposition.
 
 Example 2 — uncertain name when no official directory match is found:
 Synthetic transcript: `Councilmember Miler asked for a revised estimate.`
@@ -71,12 +76,12 @@ video_id: "<source video_id>"
 The transcript is the record; official City pages check spellings and roles only. [name uncertain] marks an unverified name's first mention; use the same name wording thereafter.
 
 ## At a glance
-Give 3–5 short bullets summarizing the meeting's main outcomes and explicit next steps. Include only material points established in the transcript; do not repeat every discussion item.
+Give 3–5 bullets in this exact format: `- **<short topic label>:** <one concise outcome or next step> [timestamp]`. Make each label 3–7 words, without a colon or pipe; keep the sentence after it to about 20 words when possible. Include the exact topic, specific outcome or next step, and a copied timestamp. If no timestamp can be found, write “Timestamp not established in transcript.” Prioritize formal decisions or proposals affecting services, spending, land use, access, or rights; upcoming public-input deadlines; and unresolved material questions. Routine announcements are lower priority. Do not use partisan framing, outrage, or unsupported claims of severity. Preserve motion and vote details in the Decisions section even when the glance bullet is concise.
 
 ## Worth a closer look
 Include this section only when the transcript supports a material issue worth a resident's attention. Do not force a flag or imply wrongdoing. Useful candidates include an unresolved material question, directly contradictory statements in the record, a vote with no stated cost or implementation details, an explicitly identified procedural concern, or a material financial, land-use, or service change. Do not call something unusual or problematic based only on intuition.
 
-Use only relevant callouts, each as a blockquote with exactly one of these bold labels: **Look closer:**, **Resident impact:**, or **Open question:**. Each callout must cite a copied timestamp and state an observable fact, a short conditional explanation of why it may matter grounded in the transcript, and what a resident can check in the record or follow-up. Keep fact and analysis distinct. If you cannot ground the callout to an exact source marker, omit it. Do not add accusations, legal conclusions, or unsupported implications.
+Use at most a few callouts, each as a single blockquote paragraph of no more than 60 words, with exactly one bold label: **Look closer:**, **Resident impact:**, or **Open question:**. Immediately after the label, write `Topic: <exact full Agenda item heading> | <callout body>`. The topic must exactly match one complete `Agenda item: <topic>` heading, including its prefix; do not match by similarity or guess. Do not use the literal ` | ` inside an agenda heading. In the callout body give one copied timestamp, an observable fact, a short conditional explanation of why it may matter, and one specific thing a resident can check. Keep fact and analysis distinct. Omit callouts that cannot be grounded to an exact source marker. Do not add accusations, legal conclusions, or unsupported implications.
 
 ## Meeting information
 - Date: <source date>
@@ -84,16 +89,16 @@ Use only relevant callouts, each as a blockquote with exactly one of these bold 
 - Attendance: <people explicitly identified as present; otherwise Not established in the transcript>
 
 ## Decisions and votes
-Avoid tables. Use a short subheading for each motion, followed by bullets for exact motion/action, mover and seconder if explicit, recorded vote/result, vote count or individual votes only when audible, and timestamp. State if no formal motions were recorded.
+Avoid tables and flat motion lists. Give each motion its own `### Decision: <subject>` heading and separate labeled paragraphs for `Motion:`, `Moved by:`, `Seconded by:`, `Result:`, `Vote:`, and `Timestamp:`. Use “Not stated in transcript” when a field is not established. For `Result:`, use only the chair's explicit declaration; never infer adoption or rejection from vote arithmetic, including a tie. If no result is explicitly declared, write “Result not stated in transcript.” If the declaration conflicts with the recorded count, report both with attribution and do not adjudicate. State if no formal motions were recorded.
 
 ## Discussion by agenda item
-Summarize each substantive item in the order discussed. Include a copied source timestamp where available. Preserve explicitly stated ordinance/resolution numbers, amounts, and material financial, land-use, or service changes. Mark unclear names, inaudible portions, and unresolved outcomes as unclear. Do not fill gaps from memory.
+Avoid one long or member-by-member paragraph. Give each substantive topic its own `### Agenda item: <topic>` heading, using a concise topic phrase taken from the transcript. Under it, use separate short paragraphs labeled `What happened:`, `Resident relevance:`, `Outcome / next step:`, and `Timestamp:`. Include `Resident relevance:` only when the transcript establishes a concrete connection; explain it conditionally and omit it otherwise. Preserve explicitly stated ordinance/resolution numbers, amounts, and material financial, land-use, or service changes. Mark unclear names, inaudible portions, and unresolved outcomes as unclear. Do not fill gaps from memory. Split broad Mayor/Council reports into issue-specific agenda items when they contain substantive policy or resident follow-up, such as voting access or waste collection; briefly group routine community-event reports.
 
 ## Public comment
-Summarize the concerns raised. Attribute claims and requests to the speaker when identified; do not imply that a speaker's claim is established fact. Omit incidental personal contact details.
+Group comments by issue rather than making one long paragraph or listing each speaker without topic context. Give each issue its own `### Comment topic: <issue>` heading, then use concise bullets that attribute each concern or request to the speaker when identified and distinguish claims from established facts. Omit incidental personal contact details.
 
 ## Action items and follow-up
-Use bullets for assignments explicitly made in the transcript. Include an owner and deadline only when explicitly stated; otherwise use “Not specified.” Do not turn suggestions into assignments.
+Use bullets for assignments explicitly made in the transcript. Label each `Assignment:`, `Owner:`, and `Deadline:`. Include an owner and deadline only when explicitly stated; otherwise use “Not specified.” Do not turn suggestions into assignments.
 
 ## Transcript limitations
 State only specific limitations that affect this record, such as a transcript beginning late, a missing segment, a caption error, an uncertain identity, or an outcome not captured. Do not add a generic disclaimer or claim the meeting is complete if the source starts late or ends early. Omit this section if no specific limitation is established.

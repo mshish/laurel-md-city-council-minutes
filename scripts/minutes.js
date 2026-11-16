@@ -215,9 +215,13 @@ export function parseMeeting(source, filePath) {
 }
 
 const ALLOWED_TAGS = [
-  'a', 'blockquote', 'br', 'code', 'em', 'h1', 'h2', 'h3', 'h4', 'hr', 'li', 'ol', 'p', 'pre',
-  'strong', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul',
+  'a', 'article', 'blockquote', 'br', 'code', 'div', 'em', 'h1', 'h2', 'h3', 'h4', 'header', 'hr', 'li', 'nav', 'ol', 'p', 'pre',
+  'section', 'strong', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul', 'span',
 ];
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+}
 
 const LEGACY_DISCLAIMER = 'Unofficial AI-generated minutes based on a spoken transcript. Not approved by the City of Laurel. Verify decisions against the source and official city records.';
 const CALLOUT_LABELS = new Map([
@@ -241,30 +245,6 @@ function slugHeading(text) {
     .replace(/[^\p{L}\p{N}]+/gu, '-')
     .replace(/^-+|-+$/g, '');
   return slug || 'section';
-}
-
-function linkTimestamps(tokens, videoId) {
-  let insideLink = false;
-  for (const token of tokens) {
-    if (token.type === 'link_open') insideLink = true;
-    if (token.type === 'text' && !insideLink && /\[\d{2}:\d{2}:\d{2}\]/.test(token.content)) {
-      const parts = [];
-      let lastIndex = 0;
-      const marker = /\[(\d{2}):(\d{2}):(\d{2})\]/g;
-      for (const match of token.content.matchAll(marker)) {
-        const minutes = Number(match[2]);
-        const seconds = Number(match[3]);
-        if (minutes > 59 || seconds > 59) continue;
-        if (match.index > lastIndex) parts.push({ text: token.content.slice(lastIndex, match.index) });
-        const total = Number(match[1]) * 3600 + minutes * 60 + seconds;
-        parts.push({ text: match[0], href: `https://www.youtube.com/watch?v=${videoId}&t=${total}` });
-        lastIndex = match.index + match[0].length;
-      }
-      if (lastIndex > 0 && lastIndex < token.content.length) parts.push({ text: token.content.slice(lastIndex) });
-      if (lastIndex > 0) token.meta = { ...(token.meta ?? {}), timestampParts: parts };
-    }
-    if (token.type === 'link_close') insideLink = false;
-  }
 }
 
 function stripLegacyDisclaimer(tokens, title = '') {
@@ -327,6 +307,25 @@ function suppressLeadingPlainTitle(tokens, title) {
   children.splice(0, children.length > 1 ? 2 : 1);
 }
 
+function promoteExplicitSectionHeadings(tokens) {
+  const prefixes = ['Agenda item:', 'Decision:', 'Comment topic:'];
+  for (let index = 0; index < tokens.length - 2; index += 1) {
+    const open = tokens[index];
+    const inline = tokens[index + 1];
+    const close = tokens[index + 2];
+    if (open.type !== 'paragraph_open' || inline.type !== 'inline' || close.type !== 'paragraph_close') continue;
+    const first = inline.children?.[0];
+    if (first?.type !== 'text') continue;
+    const prefix = prefixes.find((candidate) => first.content.startsWith(`${candidate} `));
+    if (!prefix) continue;
+    open.type = 'heading_open'; open.tag = 'h3'; open.nesting = 1;
+    close.type = 'heading_close'; close.tag = 'h3'; close.nesting = -1;
+    open.meta = { ...(open.meta ?? {}), displayPrefix: prefix };
+    inline.meta = { ...(inline.meta ?? {}), headingPrefix: prefix };
+    first.meta = { ...(first.meta ?? {}), headingPrefix: prefix };
+  }
+}
+
 function assignHeadingIds(tokens) {
   const counts = new Map();
   const headings = [];
@@ -335,6 +334,9 @@ function assignHeadingIds(tokens) {
     const inline = tokens[index + 1];
     if (open.type !== 'heading_open' || !['h2', 'h3'].includes(open.tag) || inline.type !== 'inline') continue;
     const text = visibleInlineText(inline.children).trim();
+    const firstText = inline.children?.find((child) => child.type === 'text');
+    const headingPrefix = ['Agenda item:', 'Decision:', 'Comment topic:'].find((prefix) => text.startsWith(`${prefix} `));
+    if (headingPrefix && firstText) firstText.meta = { ...(firstText.meta ?? {}), headingPrefix };
     const base = slugHeading(text);
     const count = (counts.get(base) ?? 0) + 1;
     counts.set(base, count);
@@ -346,17 +348,455 @@ function assignHeadingIds(tokens) {
   return headings;
 }
 
+// ---------------------------------------------------------------------------
+// Meeting page layout
+//
+// The page is a single reading column ordered by what a resident needs first:
+// the model's key points and flagged items, then formal decisions, then agenda
+// detail, then reference material (attendance, limitations). The renderer only
+// regroups and relabels source text; it never writes or shortens content.
+// ---------------------------------------------------------------------------
+
+const TIMESTAMP_MARKER = /\[(\d{2}):(\d{2}):(\d{2})\]/g;
+const HEADING_PREFIXES = ['Agenda item:', 'Decision:', 'Comment topic:'];
+
+function markerSeconds(text) {
+  const values = [];
+  for (const match of String(text).matchAll(TIMESTAMP_MARKER)) {
+    const minutes = Number(match[2]);
+    const seconds = Number(match[3]);
+    if (minutes < 60 && seconds < 60) values.push(Number(match[1]) * 3600 + minutes * 60 + seconds);
+  }
+  return values;
+}
+
+function linkTimestampText(text, videoId, escape) {
+  let html = '';
+  let last = 0;
+  for (const match of text.matchAll(TIMESTAMP_MARKER)) {
+    const minutes = Number(match[2]);
+    const seconds = Number(match[3]);
+    if (minutes > 59 || seconds > 59) continue;
+    const total = Number(match[1]) * 3600 + minutes * 60 + seconds;
+    html += escape(text.slice(last, match.index));
+    html += `<a href="${escape(`https://www.youtube.com/watch?v=${videoId}&t=${total}`)}">${escape(match[0])}</a>`;
+    last = match.index + match[0].length;
+  }
+  return html + escape(text.slice(last));
+}
+
+function lineText(inline) {
+  return visibleInlineText(inline?.children ?? []).trim();
+}
+
+function withoutHeadingPrefix(text) {
+  const prefix = HEADING_PREFIXES.find((candidate) => text.startsWith(`${candidate} `));
+  return prefix ? text.slice(prefix.length + 1).trim() : text;
+}
+
+function labelOf(inline, labels) {
+  const text = lineText(inline);
+  return labels.find((label) => text.startsWith(label)) ?? null;
+}
+
+// Removes a leading "Label:" written either as plain text or as **Label:**.
+function stripLeading(inline, prefix) {
+  const children = inline?.children ?? [];
+  // markdown-it emits an empty text token before a leading delimiter run.
+  while (children[0]?.type === 'text' && !children[0].content) children.shift();
+  if (children[0]?.type === 'strong_open' && children[2]?.type === 'strong_close' &&
+      visibleInlineText(children.slice(0, 3)).trim() === prefix) {
+    children.splice(0, 3);
+  } else if (children[0]?.type === 'text' && children[0].content.trimStart().startsWith(prefix)) {
+    children[0].content = children[0].content.trimStart().slice(prefix.length);
+  } else {
+    return false;
+  }
+  if (children[0]?.type === 'text') children[0].content = children[0].content.trimStart();
+  return true;
+}
+
+function splitMeetingSections(tokens) {
+  const sections = [];
+  let current = { heading: [], headingText: '', tokens: [] };
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token.type === 'heading_open' && token.tag === 'h2') {
+      if (current.heading.length || current.tokens.length) sections.push(current);
+      current = { heading: tokens.slice(index, index + 3), headingText: visibleInlineText(tokens[index + 1]?.children).trim(), tokens: [] };
+      index += 2;
+    } else current.tokens.push(token);
+  }
+  if (current.heading.length || current.tokens.length) sections.push(current);
+  return sections;
+}
+
+const LIST_STRUCTURE = new Set([
+  'bullet_list_open', 'bullet_list_close', 'ordered_list_open', 'ordered_list_close', 'list_item_open', 'list_item_close',
+]);
+
+// Flattens a section into h3 headings, text lines (paragraphs or list items),
+// blockquotes, and any other block kept intact for generic rendering.
+function sectionBlocks(tokens) {
+  const blocks = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (LIST_STRUCTURE.has(token.type)) continue;
+    if (token.type === 'heading_open' && token.tag === 'h3') {
+      blocks.push({ kind: 'h3', tokens: tokens.slice(index, index + 3), inline: tokens[index + 1], open: token });
+      index += 2;
+      continue;
+    }
+    if (token.type === 'paragraph_open') {
+      blocks.push({ kind: 'line', tokens: tokens.slice(index, index + 3), inline: tokens[index + 1] });
+      index += 2;
+      continue;
+    }
+    let end = index;
+    if (token.nesting === 1) {
+      const closeType = token.type.replace(/_open$/, '_close');
+      while (end < tokens.length && !(tokens[end].type === closeType && tokens[end].level === token.level)) end += 1;
+    }
+    const slice = tokens.slice(index, end + 1);
+    blocks.push({ kind: token.type === 'blockquote_open' ? 'quote' : 'raw', tokens: slice, inline: slice.find((t) => t.type === 'inline') });
+    index = end;
+  }
+  return blocks;
+}
+
+class PageRenderer {
+  constructor(engine, videoId) {
+    this.engine = engine;
+    this.videoId = videoId;
+    this.esc = engine.utils.escapeHtml;
+    this.inPageIds = new Set();
+  }
+
+  tokens(tokens) {
+    return this.engine.renderer.render(tokens, this.engine.options, {});
+  }
+
+  inline(inline) {
+    return inline ? this.engine.renderer.renderInline(inline.children ?? [], this.engine.options, {}) : '';
+  }
+
+  linkedText(text) {
+    return linkTimestampText(text, this.videoId, this.esc);
+  }
+
+  // Renders a block standalone; list-item paragraphs become ordinary paragraphs.
+  block(block) {
+    if (block.kind === 'line') return `<p>${this.inline(block.inline)}</p>`;
+    if (block.kind === 'h3') return this.tokens(block.tokens);
+    return this.tokens(block.tokens);
+  }
+
+  uniqueId(base) {
+    let id = base;
+    for (let suffix = 2; this.inPageIds.has(id); suffix += 1) id = `${base}-${suffix}`;
+    this.inPageIds.add(id);
+    return id;
+  }
+}
+
+// ---- Decisions -----------------------------------------------------------
+
+const DECISION_FIELDS = new Map([
+  ['Exact action proposed:', 'motion'], ['Motion:', 'motion'], ['Mover:', 'mover'], ['Moved by:', 'mover'],
+  ['Seconder:', 'seconder'], ['Seconded by:', 'seconder'], ['Recorded result:', 'result'], ['Result:', 'result'],
+  ['Individual votes:', 'vote'], ['Vote:', 'vote'], ['Timestamp:', 'time'],
+]);
+
+// Older summaries put the subject and motion on one line: "Subject (No. 1): Motion to ...".
+function splitLegacyDecisionTitle(inline) {
+  const first = inline?.children?.[0];
+  if (first?.type !== 'text') return null;
+  const candidates = ['): ', ': Motion to ', ': Motion ']
+    .map((delimiter) => ({ delimiter, index: first.content.indexOf(delimiter) }))
+    .filter((match) => match.index > 0)
+    .sort((a, b) => a.index - b.index);
+  const match = candidates[0];
+  if (!match) return null;
+  const closesParen = match.delimiter.startsWith('):');
+  const title = first.content.slice(0, closesParen ? match.index + 1 : match.index).trim();
+  first.content = first.content.slice(closesParen ? match.index + match.delimiter.length : match.index + 2);
+  return title;
+}
+
+function parseDecisions(blocks) {
+  const intro = [];
+  const groups = [];
+  let current = null;
+  for (const block of blocks) {
+    if (block.kind === 'h3') {
+      current = { title: withoutHeadingPrefix(lineText(block.inline)), id: block.open.attrGet('id'), fields: {}, extra: [] };
+      groups.push(current);
+      continue;
+    }
+    if (block.kind === 'line') {
+      const label = labelOf(block.inline, [...DECISION_FIELDS.keys()]);
+      if (label) {
+        if (!current) { current = { title: null, fields: {}, extra: [] }; groups.push(current); }
+        stripLeading(block.inline, label);
+        current.fields[DECISION_FIELDS.get(label)] = block.inline;
+        continue;
+      }
+      const legacyTitle = splitLegacyDecisionTitle(block.inline);
+      if (legacyTitle) {
+        current = { title: legacyTitle, fields: { motion: block.inline }, extra: [] };
+        groups.push(current);
+        continue;
+      }
+    }
+    (current ? current.extra : intro).push(block);
+  }
+  return { intro, groups };
+}
+
+// Classifies only the explicit result wording; it never derives a result from vote counts.
+function resultTone(text) {
+  if (/\b(not stated|unclear|no result|not announced)\b/i.test(text)) return 'unclear';
+  if (/\b(fail|fails|failed|defeated|denied|rejected)\b/i.test(text)) return 'failed';
+  if (/\b(carries|carried|approved|adopted|passes|passed)\b/i.test(text)) return 'passed';
+  return 'unclear';
+}
+
+function renderDecisions(blocks, page) {
+  const { intro, groups } = parseDecisions(blocks);
+  if (!groups.length || groups.every((group) => !Object.keys(group.fields).length)) return null;
+  const items = groups.map((group) => {
+    const { fields } = group;
+    let badge = '';
+    let voteDetail = fields.vote ? page.inline(fields.vote) : '';
+    if (fields.result) {
+      const text = lineText(fields.result);
+      const paren = text.indexOf(' (');
+      const split = paren > 0 && text.endsWith(')');
+      const label = split ? text.slice(0, paren) : text;
+      if (split && !voteDetail) voteDetail = page.linkedText(text.slice(paren + 2, -1));
+      badge = `<span class="result result-${resultTone(label)}">${page.linkedText(label)}</span>`;
+    }
+    const meta = [];
+    if (fields.mover) meta.push(`Moved by ${page.inline(fields.mover)}`);
+    if (fields.seconder) meta.push(`seconded by ${page.inline(fields.seconder)}`);
+    if (fields.time) meta.push(page.inline(fields.time));
+    const titleHtml = group.title ? page.esc(group.title) : 'Decision';
+    const idAttr = group.id ? ` id="${page.esc(group.id)}"` : '';
+    return `<li class="decision">
+<div class="decision-head"><h3${idAttr}>${titleHtml}</h3>${badge}</div>
+${fields.motion ? `<p class="decision-motion">${page.inline(fields.motion)}</p>` : ''}
+${voteDetail ? `<p class="decision-vote"><span class="field-label">Vote</span> ${voteDetail}</p>` : ''}
+${meta.length ? `<p class="decision-meta">${meta.join(' · ')}</p>` : ''}
+${group.extra.map((block) => page.block(block)).join('')}
+</li>`;
+  });
+  return `${intro.map((block) => page.block(block)).join('')}<ol class="decision-list">${items.join('')}</ol>`;
+}
+
+// ---- Agenda items --------------------------------------------------------
+
+const AGENDA_FIELDS = new Map([
+  ['What happened:', 'what'], ['Resident relevance:', 'relevance'], ['Outcome / next step:', 'outcome'], ['Timestamp:', 'time'],
+]);
+const LEGACY_AGENDA_LINE = /^(.+?) \((\[\d{2}:\d{2}:\d{2}\])(?:\s*[-–]\s*(\[\d{2}:\d{2}:\d{2}\]))?\):\s*/;
+
+function parseAgenda(blocks, page) {
+  const intro = [];
+  const items = [];
+  let current = null;
+  for (const block of blocks) {
+    if (block.kind === 'h3') {
+      const headingText = lineText(block.inline);
+      current = { headingText, title: withoutHeadingPrefix(headingText), id: block.open.attrGet('id'), fields: {}, extra: [] };
+      items.push(current);
+      continue;
+    }
+    if (block.kind === 'line') {
+      const label = labelOf(block.inline, [...AGENDA_FIELDS.keys()]);
+      if (label && current) {
+        stripLeading(block.inline, label);
+        current.fields[AGENDA_FIELDS.get(label)] = block.inline;
+        continue;
+      }
+      const first = block.inline?.children?.[0];
+      const legacy = first?.type === 'text' ? LEGACY_AGENDA_LINE.exec(first.content) : null;
+      if (legacy) {
+        first.content = first.content.slice(legacy[0].length);
+        const times = [legacy[2], legacy[3]].filter(Boolean);
+        current = {
+          headingText: legacy[1].trim(), title: legacy[1].trim(), id: page.uniqueId(`agenda-${slugHeading(legacy[1])}`),
+          legacyTimes: times, fields: { what: block.inline }, extra: [],
+        };
+        items.push(current);
+        continue;
+      }
+    }
+    (current ? current.extra : intro).push(block);
+  }
+  // Time ranges let a callout without an exact Topic field find its agenda item.
+  items.forEach((item, index) => {
+    if (item.legacyTimes) {
+      const seconds = markerSeconds(item.legacyTimes.join(' '));
+      item.start = seconds[0];
+      item.end = seconds.at(-1);
+    } else {
+      item.start = markerSeconds(lineText(item.fields.time))[0];
+      const next = items.slice(index + 1).map((other) => markerSeconds(lineText(other.fields.time))[0]).find(Number.isSafeInteger);
+      item.end = Number.isSafeInteger(next) ? next - 1 : item.start;
+    }
+  });
+  return { intro, items };
+}
+
+function renderAgenda(parsed, page) {
+  const { intro, items } = parsed;
+  if (!items.length) return null;
+  const rendered = items.map((item) => {
+    const { fields } = item;
+    const when = item.legacyTimes
+      ? item.legacyTimes.map((time) => page.linkedText(time)).join(' – ')
+      : fields.time ? page.inline(fields.time) : '';
+    const flags = (item.flags ?? []).map((id) => `<a class="flag-link" href="#${page.esc(id)}">Flagged above ↑</a>`).join(' ');
+    return `<li class="agenda-item${item.flags?.length ? ' agenda-item-flagged' : ''}">
+<div class="agenda-head"><h3 id="${page.esc(item.id)}">${page.esc(item.title)}</h3>${when ? `<span class="agenda-when">${when}</span>` : ''}</div>
+${flags ? `<p class="agenda-flags">${flags}</p>` : ''}
+${fields.what ? `<p>${page.inline(fields.what)}</p>` : ''}
+${fields.outcome ? `<p class="agenda-outcome"><span class="field-label">Outcome</span> ${page.inline(fields.outcome)}</p>` : ''}
+${fields.relevance ? `<p class="agenda-relevance"><span class="field-label">For residents</span> ${page.inline(fields.relevance)}</p>` : ''}
+${item.extra.map((block) => page.block(block)).join('')}
+</li>`;
+  });
+  return `${intro.map((block) => page.block(block)).join('')}<ol class="agenda-list">${rendered.join('')}</ol>`;
+}
+
+// ---- Flagged items ("Worth a closer look") -------------------------------
+
+function calloutLabel(inline) {
+  return labelOf(inline, [...CALLOUT_LABELS.keys()]);
+}
+
+function renderFlags(blocks, agendaItems, page) {
+  const flags = blocks.filter((block) => block.kind === 'quote' && calloutLabel(block.inline));
+  if (!flags.length) return null;
+  const out = blocks.map((block) => {
+    if (!flags.includes(block)) return page.block(block);
+    const { inline } = block;
+    const label = calloutLabel(inline);
+    stripLeading(inline, label);
+    let topic = null;
+    let target = null;
+    const first = inline.children?.[0];
+    const topicMatch = first?.type === 'text' ? /^Topic: (.+?) \| /.exec(first.content) : null;
+    if (topicMatch) {
+      topic = topicMatch[1].trim();
+      first.content = first.content.slice(topicMatch[0].length);
+      const exact = agendaItems.filter((item) => item.headingText === topic);
+      if (exact.length === 1) target = exact[0];
+    }
+    if (!target) {
+      const times = markerSeconds(lineText(inline));
+      const candidates = agendaItems.filter((item) => Number.isSafeInteger(item.start) && Number.isSafeInteger(item.end) &&
+        times.some((time) => time >= item.start && time <= item.end));
+      if (candidates.length === 1) target = candidates[0];
+    }
+    const id = page.uniqueId(`flag-${slugHeading(target?.title ?? label)}`);
+    if (target) (target.flags ??= []).push(id);
+    const title = target?.title ?? (topic ? withoutHeadingPrefix(topic) : null);
+    return `<article class="flag ${CALLOUT_LABELS.get(label)}" id="${id}">
+<p class="flag-label">${page.esc(label.slice(0, -1))}</p>
+${title ? `<h3 class="flag-title">${page.esc(title)}</h3>` : ''}
+<p>${page.inline(inline)}</p>
+${target ? `<a class="flag-link" href="#${page.esc(target.id)}">Go to this agenda item ↓</a>` : ''}
+</article>`;
+  });
+  return out.join('');
+}
+
+// ---- Action items --------------------------------------------------------
+
+function renderActions(blocks, page) {
+  if (!blocks.some((block) => block.kind === 'line' && labelOf(block.inline, ['Assignment:']))) return null;
+  const items = [];
+  const other = [];
+  let current = null;
+  for (const block of blocks) {
+    const label = block.kind === 'line' ? labelOf(block.inline, ['Assignment:', 'Owner:', 'Deadline:']) : null;
+    if (label === 'Assignment:') {
+      stripLeading(block.inline, label);
+      current = { task: block.inline, meta: [] };
+      items.push(current);
+    } else if (label && current) {
+      stripLeading(block.inline, label);
+      if (!/^not specified\.?$/i.test(lineText(block.inline))) current.meta.push(`${label.slice(0, -1)}: ${page.inline(block.inline)}`);
+    } else other.push(block);
+  }
+  return `<ul class="action-list">${items.map((item) => `<li>${page.inline(item.task)}${item.meta.length ? ` <span class="action-meta">${item.meta.join(' · ')}</span>` : ''}</li>`).join('')}</ul>${other.map((block) => page.block(block)).join('')}`;
+}
+
+// ---- Page assembly -------------------------------------------------------
+
+const TOP_SECTIONS = ['at a glance', 'worth a closer look'];
+const REFERENCE_SECTIONS = ['meeting information', 'transcript limitations'];
+
+function renderStructuredSections(tokens, page) {
+  const sections = splitMeetingSections(tokens);
+  const named = sections.filter((section) => section.heading.length);
+  if (!named.length) return page.tokens(tokens);
+
+  const byTitle = new Map(named.map((section) => [section.headingText.toLowerCase(), section]));
+  const agendaSection = byTitle.get('discussion by agenda item');
+  const agenda = agendaSection ? parseAgenda(sectionBlocks(agendaSection.tokens), page) : { intro: [], items: [] };
+
+  // Flags are rendered before agenda items so agenda items can link back to them.
+  const bodies = new Map();
+  const worth = byTitle.get('worth a closer look');
+  if (worth) bodies.set(worth, renderFlags(sectionBlocks(worth.tokens), agenda.items, page));
+  for (const section of named) {
+    const title = section.headingText.toLowerCase();
+    if (section === worth) continue;
+    let body = null;
+    if (title === 'decisions and votes') body = renderDecisions(sectionBlocks(section.tokens), page);
+    else if (section === agendaSection) body = renderAgenda(agenda, page);
+    else if (title === 'action items and follow-up') body = renderActions(sectionBlocks(section.tokens), page);
+    bodies.set(section, body);
+  }
+
+  const renderSection = (section) => {
+    const slug = slugHeading(section.headingText);
+    const body = bodies.get(section) ?? page.tokens(section.tokens);
+    return `<section class="meeting-section section-${slug}">${page.tokens(section.heading)}${body}</section>`;
+  };
+
+  const preamble = sections.find((section) => !section.heading.length);
+  const top = named.filter((section) => TOP_SECTIONS.includes(section.headingText.toLowerCase()))
+    .sort((a, b) => TOP_SECTIONS.indexOf(a.headingText.toLowerCase()) - TOP_SECTIONS.indexOf(b.headingText.toLowerCase()));
+  const reference = named.filter((section) => REFERENCE_SECTIONS.includes(section.headingText.toLowerCase()));
+  const main = named.filter((section) => !top.includes(section) && !reference.includes(section));
+  const navSections = [...main, ...reference];
+  const nav = navSections.length
+    ? `<nav class="page-nav" aria-label="On this page"><span class="page-nav-title">On this page</span>${navSections
+      .map((section) => `<a class="page-nav-link" href="#${page.esc(section.heading[0].attrGet('id'))}">${page.esc(section.headingText)}</a>`).join('')}</nav>`
+    : '';
+  const hasKnownLayout = top.length || reference.length || byTitle.has('decisions and votes') || agendaSection;
+  const preambleHtml = preamble ? page.tokens(preamble.tokens) : '';
+
+  return [
+    hasKnownLayout ? '' : preambleHtml,
+    top.length ? `<div class="briefing">${top.map(renderSection).join('')}</div>` : '',
+    nav,
+    main.map(renderSection).join(''),
+    reference.length || (hasKnownLayout && preambleHtml)
+      ? `<div class="reference">${reference.map(renderSection).join('')}${hasKnownLayout ? `<div class="record-note">${preambleHtml}</div>` : ''}</div>`
+      : '',
+  ].join('');
+}
+
 function assignCalloutClasses(tokens) {
   for (let index = 0; index < tokens.length; index += 1) {
-    const open = tokens[index];
-    if (open.type !== 'blockquote_open') continue;
-    let inline;
-    for (let cursor = index + 1; cursor < tokens.length && tokens[cursor].type !== 'blockquote_close'; cursor += 1) {
-      if (tokens[cursor].type === 'inline') { inline = tokens[cursor]; break; }
-    }
-    const text = inline ? visibleInlineText(inline.children).trimStart() : '';
-    const label = [...CALLOUT_LABELS.keys()].find((candidate) => text.startsWith(candidate));
-    if (label) open.attrSet('class', CALLOUT_LABELS.get(label));
+    if (tokens[index].type !== 'blockquote_open') continue;
+    const inline = tokens.slice(index).find((token) => token.type === 'inline');
+    const label = calloutLabel(inline);
+    if (label) tokens[index].attrSet('class', CALLOUT_LABELS.get(label));
   }
 }
 
@@ -368,34 +808,47 @@ export function renderMarkdownWithToc(source, videoId, title = '') {
   suppressLeadingPlainTitle(tokens, title);
   stripLegacyDisclaimer(tokens, title);
   removeEmptyParagraphs(tokens);
-  for (const token of tokens) if (token.type === 'inline') linkTimestamps(token.children ?? [], videoId);
+  promoteExplicitSectionHeadings(tokens);
   const headings = assignHeadingIds(tokens);
   assignCalloutClasses(tokens);
-  const allowedIds = new Set(headings.map(({ id }) => id));
-  const originalHeadingClose = renderEngine.renderer.rules.heading_close ?? ((tokens, index, options, env, renderer) => renderer.renderToken(tokens, index, options));
+  const page = new PageRenderer(renderEngine, videoId);
+  for (const { id } of headings) page.inPageIds.add(id);
+
+  const originalHeadingClose = renderEngine.renderer.rules.heading_close ?? ((t, i, options, env, renderer) => renderer.renderToken(t, i, options));
   renderEngine.renderer.rules.heading_close = (renderTokens, index, options, env, renderer) => {
     const open = renderTokens.slice(0, index).reverse().find((token) => token.type === 'heading_open' && token.level === renderTokens[index].level);
-    if (open?.meta?.headingId && allowedIds.has(open.meta.headingId)) {
+    if (open?.meta?.headingId) {
       return `<a class="heading-anchor" href="#${open.meta.headingId}" aria-label="Link to section">#</a>${originalHeadingClose(renderTokens, index, options, env, renderer)}`;
     }
     return originalHeadingClose(renderTokens, index, options, env, renderer);
   };
   renderEngine.renderer.rules.text = (renderTokens, index) => {
     const token = renderTokens[index];
-    if (!token.meta?.timestampParts) return renderEngine.utils.escapeHtml(token.content);
-    return token.meta.timestampParts.map((part) => part.href
-      ? `<a href="${renderEngine.utils.escapeHtml(part.href)}">${renderEngine.utils.escapeHtml(part.text)}</a>`
-      : renderEngine.utils.escapeHtml(part.text)).join('');
+    let content = token.content;
+    const prefix = token.meta?.headingPrefix;
+    if (prefix && content.startsWith(`${prefix} `)) content = content.slice(prefix.length + 1);
+    let linkDepth = 0;
+    for (let cursor = 0; cursor < index; cursor += 1) {
+      if (renderTokens[cursor].type === 'link_open') linkDepth += 1;
+      else if (renderTokens[cursor].type === 'link_close') linkDepth -= 1;
+    }
+    return linkDepth > 0 ? page.esc(content) : page.linkedText(content);
   };
-  const rendered = renderEngine.renderer.render(tokens, renderEngine.options, {});
+
+  const rendered = renderStructuredSections(tokens, page);
+  const inPageClasses = ['heading-anchor', 'flag-link', 'page-nav-link'];
   const html = sanitizeHtml(rendered, {
     allowedTags: ALLOWED_TAGS,
-    allowedAttributes: { a: ['href', 'title', 'rel', 'target', 'class', 'aria-label'], h2: ['id'], h3: ['id'], blockquote: ['class'] },
+    allowedAttributes: {
+      a: ['href', 'title', 'rel', 'target', 'class', 'aria-label'], h2: ['id', 'class'], h3: ['id', 'class'], blockquote: ['class', 'id'],
+      article: ['class', 'id'], div: ['class'], span: ['class'], section: ['class'], nav: ['aria-label', 'class'],
+      p: ['class'], li: ['class'], ol: ['class'], ul: ['class'],
+    },
     allowedSchemes: ['https'],
     transformTags: {
       a: (_tagName, attributes) => {
-        if (attributes.class === 'heading-anchor' && /^#[\p{L}\p{N}-]+$/u.test(attributes.href ?? '') && allowedIds.has(attributes.href.slice(1))) {
-          return { tagName: 'a', attribs: { href: attributes.href, class: 'heading-anchor', 'aria-label': attributes['aria-label'] } };
+        if (inPageClasses.includes(attributes.class) && /^#[\p{L}\p{N}-]+$/u.test(attributes.href ?? '') && page.inPageIds.has(attributes.href.slice(1))) {
+          return { tagName: 'a', attribs: { href: attributes.href, class: attributes.class, ...(attributes['aria-label'] ? { 'aria-label': attributes['aria-label'] } : {}) } };
         }
         const href = validateMeetingYoutubeUrl(attributes.href, videoId);
         return { tagName: 'a', attribs: { href, rel: 'noopener noreferrer', target: '_blank' } };

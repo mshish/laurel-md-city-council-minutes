@@ -66,6 +66,10 @@ function paragraphMarkdown(paragraph) {
     throw new Error('archive_invalid');
   }
   const text = paragraph.text;
+  // Workspace Studio's Create Doc step flattens Markdown headings to NORMAL_TEXT paragraphs.
+  if (!paragraph.isListItem && /^(Agenda item|Decision|Comment topic): .+$/.test(text)) {
+    return `### ${text}`;
+  }
   const callout = /^(Look closer|Resident impact|Open question): (.*)$/.exec(text);
   if (callout) return `> **${callout[1]}:** ${callout[2]}`;
   if (SECTION_LABELS.has(text)) return `## ${text}`;
