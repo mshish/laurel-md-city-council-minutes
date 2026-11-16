@@ -7,11 +7,13 @@ import {
   meetingPath,
   parseMeeting,
   renderMarkdown,
+  renderMarkdownWithToc,
   serializeMeeting,
   validatePayload,
   validateYoutubeUrl,
 } from '../scripts/minutes.js';
 import { persistPayload } from '../scripts/ingest-dispatch.js';
+import { renderMeetingPage } from '../scripts/build-site.js';
 
 const videoId = 'AbCdEfGhIJK';
 const title = 'Input validation test fixture';
@@ -74,6 +76,62 @@ test('escapes raw HTML and sanitizes generated markdown output', () => {
   assert.match(html, /target="_blank"/);
   assert.doesNotMatch(renderMarkdown(`# ${title}\n\nContent.`, videoId, title), /<h1>/);
   assert.throws(() => validatePayload(dispatch({ markdown: markdown.replace(`# ${title}`, `![image](https://youtu.be/${videoId})\n\n# ${title}`) })), /images are not allowed/);
+});
+
+test('creates stable Unicode and duplicate section anchors and a matching table of contents', () => {
+  const source = '## Café & Community\n\n### Next steps\n\n## Café & Community\n';
+  const result = renderMarkdownWithToc(source, videoId);
+  assert.deepEqual(result.headings, [
+    { id: 'cafe-community', text: 'Café & Community', level: 2 },
+    { id: 'next-steps', text: 'Next steps', level: 3 },
+    { id: 'cafe-community-2', text: 'Café & Community', level: 2 },
+  ]);
+  assert.match(result.html, /<h2 id="cafe-community">Café &amp; Community<a href="#cafe-community" class="heading-anchor"/);
+  assert.match(result.html, /<h2 id="cafe-community-2">/);
+  assert.doesNotMatch(result.html, /javascript:/i);
+  assert.equal(renderMarkdownWithToc(source, videoId).html, result.html, 'repeated rendering does not accumulate anchor rules');
+});
+
+test('styles only the documented evidence callouts and removes the exact legacy disclaimer', () => {
+  const oldDisclaimer = 'Unofficial AI-generated minutes based on a spoken transcript. Not approved by the City of Laurel. Verify decisions against the source and official city records.';
+  const html = renderMarkdown(`A title.\n${oldDisclaimer}\n\n> **Look closer:** This is ambiguous.\n\n> **Resident impact:** Example resident effect.\n\n> **Open question:** The record is unclear.\n\n> **Other note:** Keep this.`, videoId);
+  assert.doesNotMatch(html, /Unofficial AI-generated minutes based on a spoken transcript/);
+  assert.match(html, /class="callout-look-closer"/);
+  assert.match(html, /class="callout-resident-impact"/);
+  assert.match(html, /class="callout-open-question"/);
+  assert.match(html, />\s*<strong>Other note:<\/strong> Keep this\./);
+  assert.match(html, /A title\./);
+  const prefixed = renderMarkdown(`${title}\n${oldDisclaimer}\n\nA real paragraph follows.`, videoId, title);
+  assert.doesNotMatch(prefixed, new RegExp(title));
+  assert.doesNotMatch(prefixed, /Unofficial AI-generated minutes/);
+  assert.match(prefixed, /A real paragraph follows\./);
+});
+
+test('links plain timestamps to the source video without rewriting code or existing links', () => {
+  const source = 'At [00:15:17] the vote begins. `[00:20:00]` [already linked](https://www.youtube.com/watch?v=' + videoId + '&t=10s).';
+  const html = renderMarkdown(source, videoId);
+  assert.match(html, /href="https:\/\/www\.youtube\.com\/watch\?v=AbCdEfGhIJK&amp;t=917"[^>]*>\[00:15:17\]<\/a>/);
+  assert.match(html, /<code>\[00:20:00\]<\/code>/);
+  assert.match(html, /already linked/);
+  assert.equal((html.match(/href="https:\/\/www\.youtube\.com\/watch\?v=/g) ?? []).length, 2);
+  const repeated = renderMarkdown('[00:15:17] [00:15:17]', videoId);
+  assert.equal((repeated.match(/href="https:\/\/www\.youtube\.com\/watch\?v=/g) ?? []).length, 2);
+});
+
+test('meeting page places the contents navigation before prose and has one compact AI disclaimer', () => {
+  const meeting = {
+    title,
+    date: '2026-11-15',
+    video_id: videoId,
+    video_url: `https://www.youtube.com/watch?v=${videoId}`,
+    file: `2026-11-15-${videoId}.md`,
+    markdown: `Names follow the transcript; [name uncertain] marks an unverified spelling or identity.\n\n## Decisions\n\n> **Open question:** Verify the final vote.\n`,
+  };
+  const html = renderMeetingPage(meeting);
+  assert.ok(html.indexOf('aria-label="On this page"') < html.indexOf('class="prose"'));
+  assert.match(html, /Names follow the transcript; \[name uncertain\] marks an unverified spelling or identity\./);
+  assert.equal((html.match(/Unofficial AI summary\. May contain mistakes; verify against the recording\./g) ?? []).length, 1);
+  assert.doesNotMatch(html, /class="notice"/);
 });
 
 test('serializes stable source metadata and reads it back for site generation', () => {

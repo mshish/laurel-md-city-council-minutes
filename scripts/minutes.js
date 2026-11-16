@@ -219,20 +219,183 @@ const ALLOWED_TAGS = [
   'strong', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul',
 ];
 
-export function renderMarkdown(source, videoId, title = '') {
-  const body = title
-    ? source.replace(/^# [^\r\n]+(?:\r?\n|$)/, (heading) => heading.trim() === `# ${title}` ? '' : heading)
-    : source;
-  const rendered = markdown.render(body);
-  return sanitizeHtml(rendered, {
+const LEGACY_DISCLAIMER = 'Unofficial AI-generated minutes based on a spoken transcript. Not approved by the City of Laurel. Verify decisions against the source and official city records.';
+const CALLOUT_LABELS = new Map([
+  ['Look closer:', 'callout-look-closer'],
+  ['Resident impact:', 'callout-resident-impact'],
+  ['Open question:', 'callout-open-question'],
+]);
+
+function visibleInlineText(tokens = []) {
+  return tokens.map((token) => {
+    if (token.type === 'text' || token.type === 'code_inline' || token.type === 'html_inline') return token.content;
+    if (token.type === 'image') return token.content || token.attrGet('alt') || '';
+    if (token.type === 'softbreak' || token.type === 'hardbreak') return ' ';
+    return token.children ? visibleInlineText(token.children) : '';
+  }).join('');
+}
+
+function slugHeading(text) {
+  const slug = text.normalize('NFKD').toLowerCase()
+    .replace(/\p{M}/gu, '')
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || 'section';
+}
+
+function linkTimestamps(tokens, videoId) {
+  let insideLink = false;
+  for (const token of tokens) {
+    if (token.type === 'link_open') insideLink = true;
+    if (token.type === 'text' && !insideLink && /\[\d{2}:\d{2}:\d{2}\]/.test(token.content)) {
+      const parts = [];
+      let lastIndex = 0;
+      const marker = /\[(\d{2}):(\d{2}):(\d{2})\]/g;
+      for (const match of token.content.matchAll(marker)) {
+        const minutes = Number(match[2]);
+        const seconds = Number(match[3]);
+        if (minutes > 59 || seconds > 59) continue;
+        if (match.index > lastIndex) parts.push({ text: token.content.slice(lastIndex, match.index) });
+        const total = Number(match[1]) * 3600 + minutes * 60 + seconds;
+        parts.push({ text: match[0], href: `https://www.youtube.com/watch?v=${videoId}&t=${total}` });
+        lastIndex = match.index + match[0].length;
+      }
+      if (lastIndex > 0 && lastIndex < token.content.length) parts.push({ text: token.content.slice(lastIndex) });
+      if (lastIndex > 0) token.meta = { ...(token.meta ?? {}), timestampParts: parts };
+    }
+    if (token.type === 'link_close') insideLink = false;
+  }
+}
+
+function stripLegacyDisclaimer(tokens, title = '') {
+  for (const token of tokens) {
+    if (token.type !== 'inline' || !token.children?.length) continue;
+    const text = visibleInlineText(token.children);
+    if (!text.includes(LEGACY_DISCLAIMER)) continue;
+    const legacyStart = title ? `${title} ${LEGACY_DISCLAIMER}` : LEGACY_DISCLAIMER;
+    let removeTitle = Boolean(title) && text.trimStart().startsWith(legacyStart);
+    let titleRemoved = false;
+    // This is the exact old generated sentence. Remove only that sentence from
+    // a text token, leaving the title and any real content in the paragraph.
+    for (const child of token.children) {
+      if (removeTitle && !titleRemoved) {
+        if (child.type === 'text' && child.content === title) {
+          child.content = '';
+          titleRemoved = true;
+          continue;
+        }
+        if (child.type === 'softbreak' || child.type === 'hardbreak') {
+          child.hidden = true;
+          continue;
+        }
+      }
+      if (child.type !== 'text' || !child.content.includes(LEGACY_DISCLAIMER)) continue;
+      child.content = child.content.replace(LEGACY_DISCLAIMER, '').replace(/\n{2,}/g, '\n').trimEnd();
+      if (!child.content) token.children.splice(token.children.indexOf(child), 1);
+      removeTitle = false;
+    }
+  }
+}
+
+function removeEmptyParagraphs(tokens) {
+  for (let index = 0; index < tokens.length - 2; index += 1) {
+    if (tokens[index].type === 'paragraph_open' && tokens[index + 1].type === 'inline' &&
+        !visibleInlineText(tokens[index + 1].children).trim() && tokens[index + 2].type === 'paragraph_close') {
+      tokens.splice(index, 3);
+      index -= 1;
+    }
+  }
+}
+
+function suppressMatchingTitle(tokens, title) {
+  if (!title) return;
+  for (let index = 0; index < tokens.length - 2; index += 1) {
+    if (tokens[index].type !== 'heading_open' || tokens[index].tag !== 'h1' ||
+        tokens[index + 1].type !== 'inline' || tokens[index + 2].type !== 'heading_close') continue;
+    if (visibleInlineText(tokens[index + 1].children).trim() === title) {
+      tokens.splice(index, 3);
+    }
+    return;
+  }
+}
+
+function assignHeadingIds(tokens) {
+  const counts = new Map();
+  const headings = [];
+  for (let index = 0; index < tokens.length - 2; index += 1) {
+    const open = tokens[index];
+    const inline = tokens[index + 1];
+    if (open.type !== 'heading_open' || !['h2', 'h3'].includes(open.tag) || inline.type !== 'inline') continue;
+    const text = visibleInlineText(inline.children).trim();
+    const base = slugHeading(text);
+    const count = (counts.get(base) ?? 0) + 1;
+    counts.set(base, count);
+    const id = count === 1 ? base : `${base}-${count}`;
+    open.attrSet('id', id);
+    open.meta = { ...(open.meta ?? {}), headingId: id };
+    headings.push({ id, text, level: Number(open.tag.slice(1)) });
+  }
+  return headings;
+}
+
+function assignCalloutClasses(tokens) {
+  for (let index = 0; index < tokens.length; index += 1) {
+    const open = tokens[index];
+    if (open.type !== 'blockquote_open') continue;
+    let inline;
+    for (let cursor = index + 1; cursor < tokens.length && tokens[cursor].type !== 'blockquote_close'; cursor += 1) {
+      if (tokens[cursor].type === 'inline') { inline = tokens[cursor]; break; }
+    }
+    const text = inline ? visibleInlineText(inline.children).trimStart() : '';
+    const label = [...CALLOUT_LABELS.keys()].find((candidate) => text.startsWith(candidate));
+    if (label) open.attrSet('class', CALLOUT_LABELS.get(label));
+  }
+}
+
+export function renderMarkdownWithToc(source, videoId, title = '') {
+  const renderEngine = new MarkdownIt({ html: false, linkify: false, typographer: false });
+  renderEngine.validateLink = () => true;
+  const tokens = renderEngine.parse(source, {});
+  suppressMatchingTitle(tokens, title);
+  stripLegacyDisclaimer(tokens, title);
+  removeEmptyParagraphs(tokens);
+  for (const token of tokens) if (token.type === 'inline') linkTimestamps(token.children ?? [], videoId);
+  const headings = assignHeadingIds(tokens);
+  assignCalloutClasses(tokens);
+  const allowedIds = new Set(headings.map(({ id }) => id));
+  const originalHeadingClose = renderEngine.renderer.rules.heading_close ?? ((tokens, index, options, env, renderer) => renderer.renderToken(tokens, index, options));
+  renderEngine.renderer.rules.heading_close = (renderTokens, index, options, env, renderer) => {
+    const open = renderTokens.slice(0, index).reverse().find((token) => token.type === 'heading_open' && token.level === renderTokens[index].level);
+    if (open?.meta?.headingId && allowedIds.has(open.meta.headingId)) {
+      return `<a class="heading-anchor" href="#${open.meta.headingId}" aria-label="Link to section">#</a>${originalHeadingClose(renderTokens, index, options, env, renderer)}`;
+    }
+    return originalHeadingClose(renderTokens, index, options, env, renderer);
+  };
+  renderEngine.renderer.rules.text = (renderTokens, index) => {
+    const token = renderTokens[index];
+    if (!token.meta?.timestampParts) return renderEngine.utils.escapeHtml(token.content);
+    return token.meta.timestampParts.map((part) => part.href
+      ? `<a href="${renderEngine.utils.escapeHtml(part.href)}">${renderEngine.utils.escapeHtml(part.text)}</a>`
+      : renderEngine.utils.escapeHtml(part.text)).join('');
+  };
+  const rendered = renderEngine.renderer.render(tokens, renderEngine.options, {});
+  const html = sanitizeHtml(rendered, {
     allowedTags: ALLOWED_TAGS,
-    allowedAttributes: { a: ['href', 'title', 'rel', 'target'] },
+    allowedAttributes: { a: ['href', 'title', 'rel', 'target', 'class', 'aria-label'], h2: ['id'], h3: ['id'], blockquote: ['class'] },
     allowedSchemes: ['https'],
     transformTags: {
       a: (_tagName, attributes) => {
+        if (attributes.class === 'heading-anchor' && /^#[\p{L}\p{N}-]+$/u.test(attributes.href ?? '') && allowedIds.has(attributes.href.slice(1))) {
+          return { tagName: 'a', attribs: { href: attributes.href, class: 'heading-anchor', 'aria-label': attributes['aria-label'] } };
+        }
         const href = validateMeetingYoutubeUrl(attributes.href, videoId);
         return { tagName: 'a', attribs: { href, rel: 'noopener noreferrer', target: '_blank' } };
       },
     },
   });
+  return { html, headings };
+}
+
+export function renderMarkdown(source, videoId, title = '') {
+  return renderMarkdownWithToc(source, videoId, title).html;
 }
