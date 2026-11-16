@@ -14,6 +14,11 @@ function escapeHtml(value) {
   })[char]);
 }
 
+// Dates read as "November 9, 2026"; the ISO date stays in the datetime attribute.
+function readableDate(isoDate) {
+  return new Date(`${isoDate}T12:00:00Z`).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+}
+
 function page({ title, description, content, canonicalPath = '/' }) {
   return `<!doctype html>
 <html lang="en">
@@ -34,11 +39,10 @@ function page({ title, description, content, canonicalPath = '/' }) {
         <span class="brand-mark" aria-hidden="true">LC</span>
         <span>Laurel Council Minutes</span>
       </a>
-      <span class="header-note">Public meeting summaries</span>
     </div>
   </header>
   <main id="main" class="shell">${content}</main>
-  <footer class="site-footer"><div class="shell"><p>Unofficial AI summary. May contain mistakes; verify against the recording.</p></div></footer>
+  <footer class="site-footer"><div class="shell"><p>Written by AI from meeting captions, so it can contain mistakes. Not an official City of Laurel record.</p></div></footer>
 </body>
 </html>
 `;
@@ -68,9 +72,9 @@ export function renderMeetingPage(meeting) {
     title: meeting.title,
     description: `Unofficial AI-generated summary of the Laurel City Council meeting on ${meeting.date}.`,
     canonicalPath: `/meetings/${encodeURIComponent(fileName)}/`,
-    content: `<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/">All meetings</a><span aria-hidden="true">/</span><span>${escapeHtml(meeting.date)}</span></nav>
+    content: `<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/">All meetings</a><span aria-hidden="true">/</span><span>${escapeHtml(readableDate(meeting.date))}</span></nav>
 <article class="minutes">
-  <header class="minutes-header"><p class="eyebrow">Laurel City Council · <time datetime="${escapeHtml(meeting.date)}">${escapeHtml(meeting.date)}</time></p><h1>${escapeHtml(meeting.title)}</h1><p class="source-link"><a href="${escapeHtml(meeting.video_url)}" rel="noopener noreferrer" target="_blank">Open the source recording on YouTube <span aria-hidden="true">↗</span></a></p></header>
+  <header class="minutes-header"><h1>${escapeHtml(meeting.title)}</h1><p class="source-link"><a href="${escapeHtml(meeting.video_url)}" rel="noopener noreferrer" target="_blank">Watch on YouTube <span aria-hidden="true">↗</span></a></p></header>
   <div class="prose">${html}</div>
 </article>`,
   });
@@ -86,22 +90,19 @@ export async function buildSite() {
     ? `<ol class="meeting-list">${meetings.map((meeting) => {
       const fileName = path.basename(meeting.file, '.md');
       return `<li class="meeting-card">
-  <p class="eyebrow"><time datetime="${escapeHtml(meeting.date)}">${escapeHtml(meeting.date)}</time></p>
+  <p class="eyebrow"><time datetime="${escapeHtml(meeting.date)}">${escapeHtml(readableDate(meeting.date))}</time></p>
   <h2><a href="/meetings/${encodeURIComponent(fileName)}/">${escapeHtml(meeting.title)}</a></h2>
-  <p class="card-link"><a href="${escapeHtml(meeting.video_url)}" rel="noopener noreferrer" target="_blank">Open source recording <span aria-hidden="true">↗</span></a></p>
+  <p class="card-link"><a href="${escapeHtml(meeting.video_url)}" rel="noopener noreferrer" target="_blank">Watch on YouTube <span aria-hidden="true">↗</span></a></p>
 </li>`;
     }).join('\n')}</ol>`
-    : '<div class="empty-state"><h2>No meeting summaries yet</h2><p>Published meeting summaries will appear here when available.</p></div>';
+    : '<div class="empty-state"><h2>No meetings yet</h2><p>A summary appears here the morning after each council meeting.</p></div>';
   const home = page({
     title: 'Home',
     description: 'Unofficial AI-generated summaries of Laurel, Maryland City Council meetings, with links to the source recordings.',
     content: `<section class="hero" aria-labelledby="page-title">
-  <p class="eyebrow">Laurel, Maryland</p>
-  <h1 id="page-title">City Council meeting summaries</h1>
-  <p class="hero-copy">Browse concise summaries by meeting date and follow each one back to its source recording.</p>
+  <h1 id="page-title">Laurel City Council meetings</h1>
 </section>
-<section class="archive" aria-labelledby="archive-title">
-  <div class="section-heading"><div><p class="eyebrow">The archive</p><h2 id="archive-title">Recent meetings</h2></div><p class="count">${meetings.length} ${meetings.length === 1 ? 'summary' : 'summaries'}</p></div>
+<section class="archive" aria-label="Meetings">
   ${list}
   </section>`,
   });

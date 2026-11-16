@@ -733,7 +733,7 @@ function renderAgenda(parsed, page) {
     const when = item.legacyTimes
       ? item.legacyTimes.map((time) => page.linkedText(time)).join(' – ')
       : fields.time ? page.inline(fields.time) : '';
-    const flags = (item.flags ?? []).map((id) => `<a class="flag-link" href="#${page.esc(id)}">Flagged above ↑</a>`).join(' ');
+    const flags = (item.flags ?? []).map((id) => `<a class="flag-link" href="#${page.esc(id)}">See why it was flagged ↑</a>`).join(' ');
     return `<li class="agenda-item kind-${kind?.key ?? 'other'}${item.flags?.length ? ' agenda-item-flagged' : ''}">
 <div class="agenda-head"><h3 id="${page.esc(item.id)}">${page.esc(item.title)}</h3>${when ? `<span class="agenda-when">${when}</span>` : ''}</div>
 ${chips ? `<p class="agenda-chips">${chips}</p>` : ''}
@@ -784,7 +784,7 @@ function renderFlags(blocks, agendaItems, page) {
 <p class="flag-label">${page.esc(label.slice(0, -1))}</p>
 ${title ? `<h3 class="flag-title">${page.esc(title)}</h3>` : ''}
 <p>${page.inline(inline)}</p>
-${target ? `<a class="flag-link" href="#${page.esc(target.id)}">Go to this agenda item ↓</a>` : ''}
+${target ? `<a class="flag-link" href="#${page.esc(target.id)}">See the full agenda item ↓</a>` : ''}
 </article>`;
   });
   return out.join('');

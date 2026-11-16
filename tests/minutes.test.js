@@ -139,7 +139,7 @@ test('meeting page places the section navigation before the sections and has one
   assert.ok(html.indexOf('aria-label="On this page"') > html.indexOf('class="prose"'));
   assert.ok(html.indexOf('aria-label="On this page"') < html.indexOf('id="decisions"'));
   assert.match(html, /Names follow the transcript; \[name uncertain\] marks an unverified spelling or identity\./);
-  assert.equal((html.match(/Unofficial AI summary\. May contain mistakes; verify against the recording\./g) ?? []).length, 1);
+  assert.equal((html.match(/Written by AI from meeting captions, so it can contain mistakes\. Not an official City of Laurel record\./g) ?? []).length, 1);
   assert.doesNotMatch(html, /class="notice"/);
 });
 
@@ -204,7 +204,7 @@ test('meeting page renders one reading column with flags linked to their agenda 
   assert.match(html, /<h3 class="flag-title">Road contract<\/h3>/);
   assert.doesNotMatch(html, /Topic: Agenda item/);
   assert.match(html, /<a href="#agenda-item-road-contract" class="flag-link">/);
-  assert.match(html, /<a href="#flag-road-contract" class="flag-link">Flagged above/);
+  assert.match(html, /<a href="#flag-road-contract" class="flag-link">See why it was flagged/);
   assert.match(html, /<span class="result result-passed">✓ Motion carries<\/span>/);
   assert.match(html, /<span class="result result-unclear">Result not stated in transcript\.<\/span>/);
   assert.ok(html.indexOf('At a glance') < html.indexOf('Worth a closer look'));
