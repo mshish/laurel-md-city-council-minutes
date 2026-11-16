@@ -26,6 +26,8 @@ The static build is written to `dist/`.
 - [Setup](docs/setup.md)
 - [Scheduled Codex run](docs/scheduled-run.md)
 - [Gemini prompt](docs/gemini-prompt.md)
+- [Scheduled Claude summary routine](docs/claude-summary-prompt.md)
+- [Interface copy and visual guidelines](docs/ux-guidelines.md)
 - [Local transcript collector](local-collector/)
 
 The Windows task runs daily at 7 AM Eastern while the configured user is signed in. This computer must be available; missed runs start when available. Summaries with unsupported timestamps or mismatched metadata are held rather than published.

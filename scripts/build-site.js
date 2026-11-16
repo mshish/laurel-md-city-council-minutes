@@ -27,7 +27,7 @@ function page({ title, description, content, canonicalPath = '/' }) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="${escapeHtml(description)}">
   <meta name="theme-color" content="#15284a">
-  <title>${escapeHtml(title)} · Laurel Council Minutes</title>
+  <title>${escapeHtml(title)} · Laurel, MD Council Minutes</title>
   <link rel="canonical" href="${canonicalPath}">
   <link rel="stylesheet" href="${CSS_PATH}">
 </head>
@@ -35,9 +35,9 @@ function page({ title, description, content, canonicalPath = '/' }) {
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
     <div class="shell header-inner">
-      <a class="brand" href="/" aria-label="Laurel Council Minutes home">
+      <a class="brand" href="/" aria-label="Laurel, MD Council Minutes home">
         <span class="brand-mark" aria-hidden="true">LC</span>
-        <span>Laurel Council Minutes</span>
+        <span>Laurel, MD Council Minutes</span>
       </a>
     </div>
   </header>
@@ -70,7 +70,7 @@ export function renderMeetingPage(meeting) {
   const fileName = path.basename(meeting.file, '.md');
   return page({
     title: meeting.title,
-    description: `Unofficial AI-generated summary of the Laurel City Council meeting on ${meeting.date}.`,
+    description: `Unofficial AI-generated summary of the Laurel, Maryland City Council meeting on ${meeting.date}.`,
     canonicalPath: `/meetings/${encodeURIComponent(fileName)}/`,
     content: `<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/">All meetings</a><span aria-hidden="true">/</span><span>${escapeHtml(readableDate(meeting.date))}</span></nav>
 <article class="minutes">
@@ -100,7 +100,7 @@ export async function buildSite() {
     title: 'Home',
     description: 'Unofficial AI-generated summaries of Laurel, Maryland City Council meetings, with links to the source recordings.',
     content: `<section class="hero" aria-labelledby="page-title">
-  <h1 id="page-title">Laurel City Council meetings</h1>
+  <h1 id="page-title">Laurel, Maryland City Council meetings</h1>
 </section>
 <section class="archive" aria-label="Meetings">
   ${list}
