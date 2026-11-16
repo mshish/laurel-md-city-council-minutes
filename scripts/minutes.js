@@ -319,6 +319,14 @@ function suppressMatchingTitle(tokens, title) {
   }
 }
 
+function suppressLeadingPlainTitle(tokens, title) {
+  if (!title || tokens[0]?.type !== 'paragraph_open' || tokens[1]?.type !== 'inline' || tokens[2]?.type !== 'paragraph_close') return;
+  const children = tokens[1].children ?? [];
+  if (children[0]?.type !== 'text' || children[0].content !== title) return;
+  if (children.length > 1 && !['softbreak', 'hardbreak'].includes(children[1].type)) return;
+  children.splice(0, children.length > 1 ? 2 : 1);
+}
+
 function assignHeadingIds(tokens) {
   const counts = new Map();
   const headings = [];
@@ -357,6 +365,7 @@ export function renderMarkdownWithToc(source, videoId, title = '') {
   renderEngine.validateLink = () => true;
   const tokens = renderEngine.parse(source, {});
   suppressMatchingTitle(tokens, title);
+  suppressLeadingPlainTitle(tokens, title);
   stripLegacyDisclaimer(tokens, title);
   removeEmptyParagraphs(tokens);
   for (const token of tokens) if (token.type === 'inline') linkTimestamps(token.children ?? [], videoId);

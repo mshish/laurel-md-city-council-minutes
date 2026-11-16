@@ -45,7 +45,7 @@ Official city sources are used to check names; [name uncertain] marks an unverif
 - Ordinance No. 2064: Budget and CIP Amendment ([00:41:07] - [00:44:43]): Presented by Director DeSales [name uncertain] to add $24,000 to the general operating budget from PEG funds for camera tripods and IT fiber, and $670,000 to the Capital Improvement Program (CIP) for the Laurel Bikeway study and a state radio system grant, offset by a reduction in curb and gutter replacement. The first public hearing opened and closed at 6:41 p.m. The next reading is scheduled for November 23, 2026.
 - Charter Amendment Resolution: Budget Preparation ([00:44:43] - [00:46:55]): Presented by Councilman Simmons to amend Article 500, Section 502 to establish draft budget delivery by April 15th and full proposed budget delivery by May 1st. The first public hearing opened and closed at 6:43 p.m. The next reading is scheduled for November 23, 2026. The meeting adjourned at 6:48 p.m.
 ## Public comment
-- Mr. Joe Merkerson [name uncertain] raised concerns regarding ICE activity and family detentions in Laurel.
+- Mr. Joe Merkerson raised concerns regarding ICE activity and family detentions in Laurel.
 ## Action items and follow-up
 - Councilman Mills: Conduct a walkthrough of single-family homes in Ward 2 on November 22nd.
 - City Administration and DPW Director Tim Miller: Regroup and establish an updated trash pickup plan.

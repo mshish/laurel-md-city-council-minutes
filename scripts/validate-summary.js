@@ -107,7 +107,7 @@ export function minutesFromArchiveJson(archiveJsonText, sourceText) {
 
   let body;
   try {
-    body = archive.paragraphs.slice(1).map(paragraphMarkdown).join('\n');
+    body = archive.paragraphs.slice(1).map(paragraphMarkdown).join('\n\n');
   } catch {
     return failure('archive_invalid');
   }

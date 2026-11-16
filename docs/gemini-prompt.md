@@ -33,7 +33,7 @@ Be clinical and concrete. Use neutral verbs and plain wording. Attribute claims 
 
 Do not label conduct wrong, abnormal, improper, or a departure based on intuition. Do not assume Robert's Rules or another council procedure, and do not declare a rules violation. You may describe an observable sequence or an explicitly stated procedural concern, with attribution and a timestamp. Do not compare Laurel with other cities or infer impact from population, budget size, or a “small city” framing unless the transcript itself establishes that comparison or fact. Do not include Markdown links or bare URLs in the minutes; the website supplies the verified recording and timestamp links.
 
-Preserve every recorded motion and vote and its meaning. For each motion, record the exact action proposed, mover and seconder if stated, the recorded result, vote count and individual votes only if audible, and a source timestamp. Distinguish formal action from discussion, consensus, and recommendation. Do not infer costs, implementation dates, owners, or outcomes.
+Preserve every recorded motion and vote and its meaning. For each motion, record the exact action proposed, mover and seconder if stated, the chair's explicitly declared result, vote count and individual votes only if audible, and a source timestamp. Never infer adoption or rejection from vote arithmetic, including a tie; if no result is explicitly declared, write “Result not stated in transcript.” If a declared result conflicts with the recorded count, report both with attribution and do not adjudicate. Distinguish formal action from discussion, consensus, and recommendation. Do not infer costs, implementation dates, owners, or outcomes.
 
 ## Timestamps
 
@@ -43,10 +43,10 @@ Every timestamp in the minutes must be copied verbatim from an actual [HH:MM:SS]
 
 Formatting examples below are synthetic and exist only to demonstrate formatting. They are not meeting evidence. Never copy their names, facts, or timestamps into the minutes. Use only names, facts, and exact timestamps from this meeting's transcript, with the limited official-directory name check described above.
 
-Example 1 — neutral callout about an unresolved implementation detail:
-Synthetic transcript: `[00:31:22] The council approved the service change. The transcript does not state when it takes effect.`
+Example 1 — neutral callout about a vote without an announced result:
+Synthetic transcript: `[00:31:22] The vote was two in favor and two opposed. The chair moved to the next item without announcing a disposition.`
 Example output:
-> **Open question:** At [00:31:22], the council approved the service change, but no start date is stated. That date may matter to residents planning around the change; a follow-up schedule would clarify when it begins.
+> **Open question:** At [00:31:22], the transcript records two votes in favor and two opposed, then the chair moved to the next item without announcing a result. The disposition is not stated in this transcript; check the official minutes for the recorded outcome.
 
 Example 2 — uncertain name when no official directory match is found:
 Synthetic transcript: `Councilmember Miler asked for a revised estimate.`

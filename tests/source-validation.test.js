@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { renderMarkdown } from '../scripts/minutes.js';
 import { minutesFromArchiveJson, validateSummary } from '../scripts/validate-summary.js';
 
 const source = `---
@@ -82,7 +83,7 @@ test('rebuilds frontmatter from matching archived metadata and preserves paragra
   const result = minutesFromArchiveJson(JSON.stringify(archive), source);
   assert.equal(result.ok, true);
   assert.match(result.minutesText, /^---\ntitle: "Mayor and City Council Meeting"\ndate: "2026-11-14"\nvideo_id: "abcdefghijk"\n---/);
-  assert.match(result.minutesText, /# Mayor and City Council Meeting\n## Discussion by agenda item\n- \[00:15:16\] Budget discussion\./);
+  assert.match(result.minutesText, /# Mayor and City Council Meeting\n\n## Discussion by agenda item\n\n- \[00:15:16\] Budget discussion\./);
   assert.equal(validateSummary(source, result.minutesText).ok, true);
 });
 
@@ -127,7 +128,7 @@ test('promotes only exact known section labels to second-level headings', () => 
   };
   const result = minutesFromArchiveJson(JSON.stringify(archive), source);
   assert.equal(result.ok, true);
-  assert.match(result.minutesText, /## At a glance\nAt a glance, the meeting covered these topics\.\n## Worth a closer look\nWorth a closer look at these details\.\n## Meeting information\nThe Meeting information section lists attendance\.\n## Decisions and votes\n## Discussion by agenda item\n## Public comment\n## Action items and follow-up\n## Transcript limitations/);
+  assert.match(result.minutesText, /## At a glance\n\nAt a glance, the meeting covered these topics\.\n\n## Worth a closer look\n\nWorth a closer look at these details\.\n\n## Meeting information\n\nThe Meeting information section lists attendance\.\n\n## Decisions and votes\n\n## Discussion by agenda item\n\n## Public comment\n\n## Action items and follow-up\n\n## Transcript limitations/);
 });
 
 test('restores only exact callout-label prefixes from the archived plain text', () => {
@@ -147,7 +148,31 @@ test('restores only exact callout-label prefixes from the archived plain text', 
   const result = minutesFromArchiveJson(JSON.stringify(archive), source);
   assert.equal(result.ok, true);
   assert.match(result.minutesText,
-    /> \*\*Look closer:\*\* At \[00:15:16\], the Council discussed the budget\.\nThe Resident impact: label appears later in this sentence\.\n> \*\*Resident impact:\*\* At \[00:22:09\], the Council discussed the timeline\.\n> \*\*Open question:\*\* At \[00:15:16\], no date was stated\./);
+    /> \*\*Look closer:\*\* At \[00:15:16\], the Council discussed the budget\.\n\nThe Resident impact: label appears later in this sentence\.\n\n> \*\*Resident impact:\*\* At \[00:22:09\], the Council discussed the timeline\.\n\n> \*\*Open question:\*\* At \[00:15:16\], no date was stated\./);
+});
+
+test('keeps adjacent archived callouts as separate rendered blocks with their own classes', () => {
+  const archive = {
+    paragraphs: [
+      {
+        text: 'title: "Mayor and City Council Meeting" date: "2026-11-14" video_id: "abcdefghijk"',
+        namedStyleType: 'NORMAL_TEXT',
+        isListItem: false
+      },
+      { text: 'Resident impact: At [00:15:16], the Council discussed the budget.', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'Open question: At [00:22:09], no implementation date was stated.', namedStyleType: 'NORMAL_TEXT', isListItem: false }
+    ]
+  };
+  const archiveResult = minutesFromArchiveJson(JSON.stringify(archive), source);
+  assert.equal(archiveResult.ok, true);
+  assert.match(archiveResult.minutesText, /\n\n> \*\*Open question:/);
+
+  const validation = validateSummary(source, archiveResult.minutesText);
+  assert.equal(validation.ok, true);
+  const html = renderMarkdown(validation.payload.markdown, 'abcdefghijk');
+  assert.equal((html.match(/<blockquote\b/g) ?? []).length, 2);
+  assert.match(html, /<blockquote class="callout-resident-impact">/);
+  assert.match(html, /<blockquote class="callout-open-question">/);
 });
 
 test('CLI writes the compact dispatch and canonical file only after source validation', async () => {

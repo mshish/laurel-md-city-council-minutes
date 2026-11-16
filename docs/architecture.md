@@ -30,3 +30,5 @@ The schedule depends on this Windows user being signed in, the computer being av
 ## Presentation and editorial contract
 
 The renderer owns color, layout, navigation, timestamp links, and callout styling. Gemini emits structured Markdown, not HTML or CSS. Callouts identify transcript-supported facts, practical resident implications, and open questions without assigning motives or declaring procedural violations. Official city directories may resolve name spelling and roles; they do not establish attendance or who spoke. Unverified names use the brief [name uncertain] marker. One compact site footer provides the AI notice; specific transcript limitations remain factual content.
+
+On November 16, the revised citizen-focused prompt was tested in the live Studio flow. Providing a dated official spelling reference improved name resolution, and the explicit tied-vote example prevented an inferred parliamentary outcome. The final test still contained one unsupported timestamp and was held by the source validator; no new meeting was dispatched from that test. Formatting is deterministic, but generation still requires these evidence checks.

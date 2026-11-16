@@ -107,6 +107,14 @@ test('styles only the documented evidence callouts and removes the exact legacy 
   assert.match(prefixed, /A real paragraph follows\./);
 });
 
+test('suppresses only a matching plaintext title at the start of the body', () => {
+  const nameNote = 'Names follow the transcript; [name uncertain] marks an unverified spelling or identity.';
+  const html = renderMarkdown(`${title}\n${nameNote}\n\nThe agenda for ${title} included several items.`, videoId, title);
+  assert.equal((html.match(new RegExp(title, 'g')) ?? []).length, 1);
+  assert.match(html, /Names follow the transcript; \[name uncertain\] marks an unverified spelling or identity\./);
+  assert.match(html, new RegExp(`The agenda for ${title} included several items\\.`));
+});
+
 test('links plain timestamps to the source video without rewriting code or existing links', () => {
   const source = 'At [00:15:17] the vote begins. `[00:20:00]` [already linked](https://www.youtube.com/watch?v=' + videoId + '&t=10s).';
   const html = renderMarkdown(source, videoId);
