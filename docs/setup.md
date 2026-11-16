@@ -35,3 +35,7 @@ Use [Cloudflare's Git integration](https://developers.cloudflare.com/pages/confi
 | Node version | 22 |
 
 The live address is https://laurel-md-council-minutes.pages.dev. No custom domain or Pages Functions are needed. Verify a real deployed meeting page after publication; a successful dispatch response alone is insufficient.
+
+## Refreshing an already published summary
+
+Prompt changes apply to later Studio generations; they do not regenerate existing meeting pages. To refresh a published meeting, select its existing transcript in Studio's test-run picker, run the current flow, export only the newly generated archive Doc through the connector, and run the local source validator. If accepted, review the canonical Markdown and replace the existing tracked meeting file in a normal Git commit. The dispatch workflow intentionally refuses to overwrite an existing meeting with different content. Do not relax the validator or edit source timestamps to force publication.
