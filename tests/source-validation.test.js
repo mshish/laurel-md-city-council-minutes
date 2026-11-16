@@ -1,0 +1,172 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import test from 'node:test';
+import { minutesFromArchiveJson, validateSummary } from '../scripts/validate-summary.js';
+
+const source = `---
+title: "Mayor and City Council Meeting"
+date: "2026-11-14"
+video_id: "abcdefghijk"
+date_source: "title"
+date_verified: "true"
+---
+[00:00:04] Call to order.
+[00:15:16] The Council discussed the budget.
+[00:22:09] The meeting continued.
+`;
+
+const minutes = `---
+title: "Mayor and City Council Meeting"
+date: "2026-11-14"
+video_id: "abcdefghijk"
+---
+# Mayor and City Council Meeting
+
+## Discussion by agenda item
+- [00:00:04] The meeting was called to order.
+- [00:15:16] The Council discussed the budget.
+- [00:22:09] The meeting continued.
+`;
+
+test('accepts metadata and timestamps grounded in the original transcript', () => {
+  const result = validateSummary(source, minutes);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.payload, {
+    title: 'Mayor and City Council Meeting',
+    date: '2026-11-14',
+    video_id: 'abcdefghijk',
+    markdown: minutes
+  });
+  assert.match(result.canonicalMarkdown, /video_url: https:\/\/www\.youtube\.com\/watch\?v=abcdefghijk/);
+});
+
+test('rejects the observed unsupported [00:15:17] marker without changing it', () => {
+  const unsupported = minutes.replace('[00:15:16]', '[00:15:17]');
+  const result = validateSummary(source, unsupported);
+  assert.deepEqual(result, {
+    ok: false,
+    reason: 'timestamp_not_in_source',
+    invalid_timestamps: ['00:15:17']
+  });
+});
+
+test('requires source metadata and verified source dates to match the summary', () => {
+  assert.equal(validateSummary(source.replace('date_verified: "true"', 'date_verified: "false"'), minutes).reason,
+    'source_date_unverified');
+  assert.equal(validateSummary(source.replace('date: "2026-11-14"', 'date: "2026-11-13"'), minutes).reason,
+    'source_metadata_mismatch');
+});
+
+test('rejects SOURCE_NOT_READY and unsafe minutes before producing a dispatch payload', () => {
+  assert.equal(validateSummary(source, 'SOURCE_NOT_READY').reason, 'source_not_ready');
+  const invalidLink = minutes.replace('The meeting continued.', '[Other](https://example.com)');
+  assert.equal(validateSummary(source, invalidLink).reason, 'minutes_invalid');
+});
+
+test('rebuilds frontmatter from matching archived metadata and preserves paragraph/list text', () => {
+  const archive = {
+    paragraphs: [
+      {
+        text: 'title: "Mayor and City Council Meeting" date: "2026-11-14" video_id: "abcdefghijk"',
+        namedStyleType: 'NORMAL_TEXT',
+        isListItem: false
+      },
+      { text: 'Mayor and City Council Meeting', namedStyleType: 'HEADING_1', isListItem: false },
+      { text: 'Discussion by agenda item', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: '[00:15:16] Budget discussion.', namedStyleType: 'NORMAL_TEXT', isListItem: true }
+    ]
+  };
+  const result = minutesFromArchiveJson(JSON.stringify(archive), source);
+  assert.equal(result.ok, true);
+  assert.match(result.minutesText, /^---\ntitle: "Mayor and City Council Meeting"\ndate: "2026-11-14"\nvideo_id: "abcdefghijk"\n---/);
+  assert.match(result.minutesText, /# Mayor and City Council Meeting\n## Discussion by agenda item\n- \[00:15:16\] Budget discussion\./);
+  assert.equal(validateSummary(source, result.minutesText).ok, true);
+});
+
+test('rejects an archived metadata triple that does not exactly match source metadata', () => {
+  const archive = {
+    paragraphs: [
+      {
+        text: 'title: "Mayor and City Council Meeting" date: "2026-11-14" video_id: "wrongVideo1"',
+        namedStyleType: 'NORMAL_TEXT',
+        isListItem: false
+      },
+      { text: 'Body', namedStyleType: 'NORMAL_TEXT', isListItem: false }
+    ]
+  };
+  assert.deepEqual(minutesFromArchiveJson(JSON.stringify(archive), source), {
+    ok: false,
+    reason: 'source_metadata_mismatch',
+    invalid_timestamps: []
+  });
+});
+
+test('promotes only exact known section labels to second-level headings', () => {
+  const archive = {
+    paragraphs: [
+      {
+        text: 'title: "Mayor and City Council Meeting" date: "2026-11-14" video_id: "abcdefghijk"',
+        namedStyleType: 'NORMAL_TEXT',
+        isListItem: false
+      },
+      { text: 'Meeting information', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'The Meeting information section lists attendance.', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'Decisions and votes', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'Discussion by agenda item', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'Public comment', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'Action items and follow-up', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'Transcript limitations', namedStyleType: 'NORMAL_TEXT', isListItem: false }
+    ]
+  };
+  const result = minutesFromArchiveJson(JSON.stringify(archive), source);
+  assert.equal(result.ok, true);
+  assert.match(result.minutesText, /## Meeting information\nThe Meeting information section lists attendance\.\n## Decisions and votes\n## Discussion by agenda item\n## Public comment\n## Action items and follow-up\n## Transcript limitations/);
+});
+
+test('CLI writes the compact dispatch and canonical file only after source validation', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'laurel-summary-validation-'));
+  try {
+    const sourcePath = path.join(directory, 'source.txt');
+    const minutesPath = path.join(directory, 'minutes.md');
+    const dispatchPath = path.join(directory, 'dispatch.json');
+    const outputPath = path.join(directory, 'canonical.md');
+    const scriptPath = path.resolve('scripts/validate-summary.js');
+    await writeFile(sourcePath, source);
+    await writeFile(minutesPath, minutes);
+
+    const good = spawnSync(process.execPath, [scriptPath, '--source', sourcePath, '--minutes', minutesPath,
+      '--dispatch', dispatchPath, '--output', outputPath], { encoding: 'utf8' });
+    assert.equal(good.status, 0, good.stderr);
+    const success = JSON.parse(good.stdout);
+    assert.equal(success.ok, true);
+    assert.equal(success.video_id, 'abcdefghijk');
+    assert.deepEqual(JSON.parse(await readFile(dispatchPath, 'utf8')), {
+      event_type: 'publish-minutes',
+      client_payload: {
+        title: 'Mayor and City Council Meeting',
+        date: '2026-11-14',
+        video_id: 'abcdefghijk',
+        markdown: validateSummary(source, minutes).payload.markdown
+      }
+    });
+    assert.match(await readFile(outputPath, 'utf8'), /video_url:/);
+
+    await writeFile(minutesPath, minutes.replace('[00:15:16]', '[00:15:17]'));
+    await rm(dispatchPath);
+    const bad = spawnSync(process.execPath, [scriptPath, '--source', sourcePath, '--minutes', minutesPath,
+      '--dispatch', dispatchPath], { encoding: 'utf8' });
+    assert.equal(bad.status, 1);
+    assert.deepEqual(JSON.parse(bad.stdout), {
+      ok: false,
+      reason: 'timestamp_not_in_source',
+      invalid_timestamps: ['00:15:17']
+    });
+    assert.equal(bad.stdout.includes('[00:15:17]'), false);
+    await assert.rejects(readFile(dispatchPath));
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

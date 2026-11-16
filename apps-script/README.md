@@ -13,6 +13,11 @@ Studio instructions to stop before generating minutes when the meeting date is
 not established. Upload date is never used as a meeting date. The script reads
 metadata and captions only. It does not fetch video or audio.
 
+Two-digit dates such as `10/7/26` are accepted only when the final two digits
+match the year of `actualStartTime` in America/New_York. A mismatch or missing
+stream start leaves the title date unverified; the parser does not guess a
+century.
+
 ## Setup
 
 1. Create a standalone Apps Script project and copy `Code.gs` and
@@ -29,6 +34,13 @@ metadata and captions only. It does not fetch video or audio.
 4. Run `installDailyTrigger()` once to install one daily trigger around 7 AM
    America/New_York. Apps Script may choose a minute within the hour. This
    helper is idempotent and is intentionally not invoked automatically.
+
+To investigate caption access without exporting files, run
+`diagnoseCaptionAccess()`. It probes at most three pending target videos (or
+recent matches if the queue is empty) and reports only IDs/titles, stream end
+metadata, HTTP codes, allowlisted playability status, caption track counts, and
+response/event/line counts. It does not modify the pending queue or log caption
+text, response bodies, arbitrary server messages, or caption URLs.
 
 If using clasp, copy `.clasp.example.json` to `.clasp.json`, put the project ID
 in that local file, and keep it out of version control. No OAuth tokens or
@@ -65,6 +77,18 @@ This private adapter may stop working when YouTube changes the protocol; the
 candidate remains queued for a later retry. The code keeps that dependency in
 `fetchTranscript_()` and `CAPTION_ADAPTER`. There is no fallback that downloads
 media or silently substitutes another caption source.
+
+### Live access check
+
+On November 15, 2026, `diagnoseCaptionAccess()` checked three completed Laurel
+TV recordings, including titles dated `10/7/26`, `10/14/26`, and `10/26/26`.
+All three Android player requests returned HTTP 200 with
+`playability_status: LOGIN_REQUIRED` and zero English caption tracks, so no
+timed-text request could be made. Separately, local `youtube-transcript-api`
+1.2.5 fetched 1,812 caption segments for video `RBey6C45RNs`. That single-video
+result is evidence for that recording only; it does not establish that the
+local adapter works for other videos or the channel generally. The Apps Script
+caption path is therefore not currently verified for these recordings.
 
 ## Local tests
 

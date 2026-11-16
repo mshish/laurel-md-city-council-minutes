@@ -2,9 +2,11 @@
 
 Transcript-only automation for unofficial summaries of City of Laurel, Maryland Mayor and City Council meetings and work sessions.
 
-Apps Script → private Drive transcripts → Workspace Studio Ask Gemini + Google Docs archive → GitHub dispatch → Cloudflare Pages.
+Live archive: https://laurel-md-council-minutes.pages.dev
 
-No video/audio downloads, paid Gemini API calls, or Claude processing are part of this implementation. The public site and repository contain summaries, not raw transcripts.
+A daily local Codex CLI run discovers completed meetings, collects caption text, and uploads it through the connected Google Drive tools. Workspace Studio uses Ask Gemini to summarize the transcript and archives the result as a Google Doc. Codex runs a deterministic source validator and submits accepted summaries through the existing GitHub CLI login. GitHub Actions commits the minutes; Cloudflare Pages builds from `main`.
+
+No video/audio downloads, paid Gemini API calls, separate Drive OAuth client, or publisher PAT are required. Raw transcripts stay in ignored local storage and private Drive; they never enter Codex's context or the public repository.
 
 ## Develop
 
@@ -16,13 +18,14 @@ npm test
 npm run build
 ```
 
-The static build is written to `dist/`. There are no sample meetings masquerading as real minutes.
+The static build is written to `dist/`.
 
-## Configure
+## Operations
 
-- [Architecture, limitations, and official references](docs/architecture.md)
-- [Setup and activation checklist](docs/setup.md)
+- [Architecture and verified limitations](docs/architecture.md)
+- [Setup](docs/setup.md)
+- [Scheduled Codex run](docs/scheduled-run.md)
 - [Gemini prompt](docs/gemini-prompt.md)
-- [Transcript collector](apps-script/)
+- [Local transcript collector](local-collector/)
 
-Workspace Studio access and the proposed actions have been verified by the owner. Live collection, authenticated dispatch, and hosting each need an integration test before the automation can be called operational.
+The Windows task runs daily at 7 AM Eastern while the configured user is signed in. This computer must be available; missed runs start when available. Summaries with unsupported timestamps or mismatched metadata are held rather than published.

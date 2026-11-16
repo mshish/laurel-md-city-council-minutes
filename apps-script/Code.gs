@@ -180,6 +180,116 @@ function diagnoseConfig() {
   return result;
 }
 
+/** Read-only probe of caption access for up to three target videos. */
+function diagnoseCaptionAccess() {
+  var all = PropertiesService.getScriptProperties().getProperties();
+  var pending = {};
+  Object.keys(all).forEach(function (key) {
+    if (key.indexOf(CONFIG.pendingPrefix) !== 0) return;
+    try { pending[key.slice(CONFIG.pendingPrefix.length)] = JSON.parse(all[key]); } catch (ignored) {}
+  });
+  var candidates = priorityPendingIds_({ pending: pending }).slice(0, 3).map(function (videoId) {
+    return { videoId: videoId, title: pending[videoId].title || '' };
+  });
+  if (!candidates.length) {
+    try {
+      var channel = resolveChannel_();
+      var playlistId = channel.contentDetails && channel.contentDetails.relatedPlaylists && channel.contentDetails.relatedPlaylists.uploads;
+      var cutoff = Date.now() - getLookbackDays_() * 86400000;
+      if (playlistId) listRecentUploads_(playlistId).forEach(function (item) {
+        var snippet = item.snippet || {};
+        var id = item.contentDetails && item.contentDetails.videoId;
+        if (candidates.length < 3 && id && Date.parse(snippet.publishedAt || '') >= cutoff && isTargetMeeting_(snippet.title, '') ) {
+          candidates.push({ videoId: id, title: snippet.title || '' });
+        }
+      });
+    } catch (ignored) {}
+  }
+  var results = candidates.map(function (candidate) {
+    var item = {
+      video_id: candidate.videoId,
+      title: candidate.title,
+      finished: false,
+      actual_end_time: null,
+      player_http: null,
+      playability_status: 'UNKNOWN',
+      safe_reason: 'video_metadata_failed',
+      english_tracks: 0,
+      timedtext_http: null,
+      response_bytes: 0,
+      event_count: 0,
+      line_count: 0
+    };
+    try {
+      var video = getVideoMetadata_(candidate.videoId);
+      item.title = String(video && video.snippet && video.snippet.title || candidate.title);
+      item.finished = isFinishedVideo_(video);
+      item.actual_end_time = video && video.liveStreamingDetails && video.liveStreamingDetails.actualEndTime || null;
+      probeCaptionProtocol_(candidate.videoId, item);
+    } catch (ignored) {
+      item.safe_reason = 'metadata_or_request_failed';
+    }
+    return item;
+  });
+  logDiagnostic_('caption_access_diagnostic', { count: results.length, videos: results });
+  return { ok: true, count: results.length, videos: results };
+}
+
+function probeCaptionProtocol_(videoId, item) {
+  var playerResponse;
+  try {
+    playerResponse = UrlFetchApp.fetch(CAPTION_ADAPTER.playerUrl, {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      payload: JSON.stringify({ videoId: videoId, context: { client: { clientName: CAPTION_ADAPTER.clientName, clientVersion: CAPTION_ADAPTER.clientVersion } } })
+    });
+  } catch (ignored) {
+    item.safe_reason = 'player_request_failed';
+    return;
+  }
+  item.player_http = playerResponse.getResponseCode();
+  if (item.player_http !== 200) { item.safe_reason = 'player_http_error'; return; }
+  var player;
+  try { player = JSON.parse(playerResponse.getContentText()); } catch (ignored) { item.safe_reason = 'player_json_invalid'; return; }
+  var status = player.playabilityStatus && player.playabilityStatus.status || 'UNKNOWN';
+  item.playability_status = safePlayabilityStatus_(status);
+  var tracks = player.captions && player.captions.playerCaptionsTracklistRenderer && player.captions.playerCaptionsTracklistRenderer.captionTracks || [];
+  item.english_tracks = tracks.filter(function (track) { return /^en(?:[-_]|$)/i.test(track.languageCode || ''); }).length;
+  var track = chooseCaptionTrack_(tracks);
+  if (!track || !track.baseUrl) { item.safe_reason = tracks.length ? 'caption_track_url_missing' : 'caption_tracks_missing'; return; }
+  var response;
+  try {
+    var url = track.baseUrl + (track.baseUrl.indexOf('?') >= 0 ? '&' : '?') + 'fmt=json3';
+    response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+  } catch (ignored) { item.safe_reason = 'timedtext_request_failed'; return; }
+  item.timedtext_http = response.getResponseCode();
+  if (item.timedtext_http !== 200) { item.safe_reason = 'timedtext_http_error'; return; }
+  var body = response.getContentText();
+  try {
+    var content = response.getContent();
+    item.response_bytes = content && content.length || 0;
+  } catch (ignored) { item.response_bytes = String(body || '').length; }
+  var data;
+  try { data = JSON.parse(body); } catch (ignored) { item.safe_reason = 'timedtext_json_invalid'; return; }
+  if (!data || !Array.isArray(data.events)) { item.safe_reason = 'timedtext_events_missing'; return; }
+  item.event_count = data.events.length;
+  item.line_count = countTranscriptLines_(data.events);
+  item.safe_reason = 'ok';
+}
+
+function safePlayabilityStatus_(status) {
+  var known = ['OK', 'ERROR', 'LOGIN_REQUIRED', 'LIVE_STREAM_OFFLINE', 'UNPLAYABLE', 'AGE_CHECK_REQUIRED', 'CONTENT_CHECK_REQUIRED', 'UNKNOWN'];
+  return known.indexOf(status) >= 0 ? status : 'OTHER';
+}
+
+function countTranscriptLines_(events) {
+  var count = 0;
+  (events || []).forEach(function (event) {
+    if (!event || typeof event.tStartMs !== 'number' || !event.segs) return;
+    if (event.segs.some(function (segment) { return !!String(segment && segment.utf8 || '').replace(/\s+/g, ' ').trim(); })) count++;
+  });
+  return count;
+}
+
 function isTargetMeeting_(title, description) {
   // Deliberately select from title only: descriptions may promote unrelated
   // programming. Require the Mayor + City Council phrase and a meeting type.
@@ -207,11 +317,12 @@ function formatTranscript_(events) {
 
 function buildTranscriptFile_(video, pending, videoId, transcriptText) {
   var title = String(video && video.snippet && video.snippet.title || pending.title || '');
-  var meetingDate = findMeetingDate_(title);
+  var actualStartTime = video && video.liveStreamingDetails && video.liveStreamingDetails.actualStartTime;
+  var meetingDate = findMeetingDate_(title, actualStartTime);
   var dateSource = 'title';
   var dateVerified = true;
-  if (!meetingDate && video && video.liveStreamingDetails && video.liveStreamingDetails.actualStartTime) {
-    meetingDate = Utilities.formatDate(new Date(video.liveStreamingDetails.actualStartTime), CONFIG.timezone, 'yyyy-MM-dd');
+  if (!meetingDate && actualStartTime) {
+    meetingDate = Utilities.formatDate(new Date(actualStartTime), CONFIG.timezone, 'yyyy-MM-dd');
     dateSource = 'actual_stream_start';
     dateVerified = false;
   }
@@ -229,12 +340,20 @@ function buildTranscriptFile_(video, pending, videoId, transcriptText) {
     '---\n' + transcriptText;
 }
 
-function findMeetingDate_(title) {
+function findMeetingDate_(title, actualStartTime) {
   var text = String(title || '');
   var match = text.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
   if (match) return validDate_(Number(match[1]), Number(match[2]), Number(match[3]));
-  match = text.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b/);
-  if (match) return validDate_(Number(match[3]), Number(match[1]), Number(match[2]));
+  match = text.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})\b/);
+  if (match) {
+    var numericYear = Number(match[3]);
+    if (match[3].length === 2) {
+      var referenceYear = actualStreamYear_(actualStartTime);
+      if (!referenceYear || referenceYear % 100 !== numericYear) return null;
+      numericYear = referenceYear;
+    }
+    return validDate_(numericYear, Number(match[1]), Number(match[2]));
+  }
   var months = 'january february march april may june july august september october november december'.split(' ');
   match = text.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?[,]?\s+(\d{4})\b/i);
   if (match) {
@@ -243,6 +362,12 @@ function findMeetingDate_(title) {
     if (monthIndex >= 0) return validDate_(Number(match[3]), monthIndex + 1, Number(match[2]));
   }
   return null;
+}
+
+function actualStreamYear_(actualStartTime) {
+  if (!actualStartTime) return null;
+  var year = Number(Utilities.formatDate(new Date(actualStartTime), CONFIG.timezone, 'yyyy'));
+  return isFinite(year) && year >= 1900 ? year : null;
 }
 
 function validDate_(year, month, day) {

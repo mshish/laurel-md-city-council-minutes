@@ -49,8 +49,8 @@ function createHarness(options = {}) {
     MimeType: { PLAIN_TEXT: 'text/plain' },
     Utilities: { formatDate: (date, zone, format) => {
       assert.equal(zone, 'America/New_York');
-      assert.equal(format, 'yyyy-MM-dd');
-      return '2026-11-14';
+      const localDate = new Date(date.getTime() - 5 * 60 * 60 * 1000);
+      return format === 'yyyy' ? String(localDate.getUTCFullYear()) : localDate.toISOString().slice(0, 10);
     } },
     PropertiesService: {
       getScriptProperties: () => ({
@@ -104,21 +104,29 @@ function createHarness(options = {}) {
           assert.equal(request.method, 'post');
           assert.equal(JSON.parse(request.payload).videoId, calls.videoIds[calls.player - 1]);
           if (!captionAvailable) return response(200, { captions: { playerCaptionsTracklistRenderer: { captionTracks: [] } } });
-          return response(200, { captions: { playerCaptionsTracklistRenderer: { captionTracks: [
-            { languageCode: 'en', baseUrl: 'https://captions.invalid/v1' }
-          ] } } });
+          return response(200, {
+            playabilityStatus: { status: 'OK', reason: options.privateServerText || 'ordinary' },
+            captions: { playerCaptionsTracklistRenderer: { captionTracks: [
+              { languageCode: 'en', baseUrl: options.captionUrl || 'https://captions.invalid/v1' }
+            ] } }
+          });
         }
         calls.captions++;
         assert.match(String(url), /fmt=json3/);
         return response(200, { events: [
-          { tStartMs: 1230, segs: [{ utf8: 'Council ' }, { utf8: 'meeting.' }] },
+          { tStartMs: 1230, segs: [{ utf8: options.captionText || 'Council ' }, { utf8: 'meeting.' }] },
           { tStartMs: 3661000, segs: [{ utf8: 'Next.' }] }
         ] });
       }
     }
   };
   function response(code, body) {
-    return { getResponseCode: () => code, getContentText: () => JSON.stringify(body) };
+    const text = JSON.stringify(body);
+    return {
+      getResponseCode: () => code,
+      getContentText: () => text,
+      getContent: () => Array.from({ length: text.length })
+    };
   }
   vm.createContext(ctx);
   vm.runInContext(source, ctx, { filename: 'Code.gs' });
@@ -200,9 +208,47 @@ test('protocol fetch requests caption text only and does not fetch media', () =>
   assert.equal(harness.calls.created, 1);
 });
 
+test('caption diagnostic returns only safe metadata and counts without changing pending state', () => {
+  const secret = 'DO_NOT_LOG_TRANSCRIPT_OR_TOKEN';
+  const captionUrl = 'https://captions.invalid/v1?token=' + secret;
+  const harness = createHarness({
+    properties: {
+      'TRANSCRIPT_PENDING_V1_video-1': JSON.stringify({
+        title: 'Mayor and City Council Work Session',
+        publishedAt: new Date().toISOString(),
+        firstSeenAt: new Date().toISOString(),
+        attempts: 1
+      })
+    },
+    captionAvailable: true,
+    captionUrl,
+    captionText: secret,
+    privateServerText: secret
+  });
+  const before = [...harness.properties.entries()];
+  const result = harness.ctx.diagnoseCaptionAccess();
+  assert.equal(result.videos.length, 1);
+  assert.equal(result.videos[0].finished, true);
+  assert.equal(result.videos[0].player_http, 200);
+  assert.equal(result.videos[0].playability_status, 'OK');
+  assert.equal(result.videos[0].english_tracks, 1);
+  assert.equal(result.videos[0].timedtext_http, 200);
+  assert.equal(result.videos[0].event_count, 2);
+  assert.equal(result.videos[0].line_count, 2);
+  assert.equal(JSON.stringify(result).includes(secret), false);
+  assert.equal(harness.logs.join('\n').includes(secret), false);
+  assert.deepEqual([...harness.properties.entries()], before);
+});
+
 test('meeting date is not inferred from upload date and stream-start fallback is labeled unverified', () => {
   const { ctx } = createHarness();
   assert.equal(ctx.findMeetingDate_('City Council Work Session - 11/14/2026'), '2026-11-14');
+  const streamStart = '2026-10-07T16:00:00Z';
+  assert.equal(ctx.findMeetingDate_('Virtual Mayor and City Council Work Session 10/7/26', streamStart), '2026-10-07');
+  assert.equal(ctx.findMeetingDate_('Virtual 21st Mayor and City Council Meeting 10/14/26', '2026-10-14T16:00:00Z'), '2026-10-14');
+  assert.equal(ctx.findMeetingDate_('In-Person 22nd Mayor and City Council Meeting 10/26/26', '2026-10-26T16:00:00Z'), '2026-10-26');
+  assert.equal(ctx.findMeetingDate_('Mayor and City Council Meeting 10/7/25', streamStart), null);
+  assert.equal(ctx.findMeetingDate_('Mayor and City Council Meeting 10/7/26'), null);
   assert.equal(ctx.findMeetingDate_('City Council Work Session'), null);
   const metadata = ctx.buildTranscriptFile_(
     { snippet: { title: 'City Council Work Session' }, liveStreamingDetails: { actualStartTime: '2026-11-15T00:30:00Z' } },
@@ -211,6 +257,13 @@ test('meeting date is not inferred from upload date and stream-start fallback is
   assert.match(metadata, /date: "2026-11-14"/);
   assert.match(metadata, /date_source: "actual_stream_start"/);
   assert.match(metadata, /date_verified: "false"/);
+  const mismatch = ctx.buildTranscriptFile_(
+    { snippet: { title: 'Mayor and City Council Meeting 10/7/25' }, liveStreamingDetails: { actualStartTime: streamStart } },
+    { title: 'Mayor and City Council Meeting 10/7/25' }, 'video-3', '[00:00:01] Hello.'
+  );
+  assert.match(mismatch, /date: "2026-10-07"/);
+  assert.match(mismatch, /date_source: "actual_stream_start"/);
+  assert.match(mismatch, /date_verified: "false"/);
 });
 
 if (failures) process.exitCode = 1;

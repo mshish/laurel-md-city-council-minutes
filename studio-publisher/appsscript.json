@@ -8,8 +8,7 @@
   "addOns": {
     "common": {
       "name": "Laurel Minutes Publisher",
-      "logoUrl": "https://www.gstatic.com/images/branding/productlogos/gsuite_addons/v6/web-24dp/logo_gsuite_addons_color_1x_web_24dp.png",
-      "useLocaleFromApp": true
+      "logoUrl": "https://www.gstatic.com/images/branding/productlogos/gsuite_addons/v6/web-24dp/logo_gsuite_addons_color_1x_web_24dp.png"
     },
     "studio": {
       "flows": {

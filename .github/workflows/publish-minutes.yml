@@ -28,6 +28,12 @@ jobs:
         run: npm ci
       - name: Run JavaScript tests
         run: npm test
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run offline collector tests
+        run: python -m unittest discover -s local-collector -p "test_*.py"
       - name: Build the static site
         run: npm run build
 

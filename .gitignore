@@ -9,3 +9,7 @@ dist/
 .playwright-cli/
 *.log
 .local/
+__pycache__/
+*.py[cod]
+.venv/
+local-collector/transcripts/

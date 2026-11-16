@@ -1,33 +1,28 @@
-# Architecture and integration gates
+# Architecture and verified limitations
 
-The goal is next-morning, transcript-only unofficial summaries, with no Gemini API billing and no Claude scheduled processing. Google Workspace Studio Ask Gemini uses the user's existing access; no model API key is required by this repository.
+The goal is next-morning, transcript-only unofficial summaries using existing ChatGPT and Workspace Studio access, with no paid model API calls.
 
-1. Google Apps Script polls the official Laurel TV uploads playlist using the advanced YouTube service. It selects council meetings/work sessions, confirms the livestream has ended, and saves timestamped caption text and metadata in a private Drive input folder.
-2. Studio's **When an item is added to a folder** starter reads the new transcript. **Ask Gemini** uses `gemini-prompt.md`. **Create Google Doc** archives the result in a different folder.
-3. Studio sends the summarized Markdown and metadata to GitHub's `repository_dispatch` endpoint, event type `publish-minutes`. Raw transcripts never enter the event or this repository.
-4. GitHub Actions validates and commits one Markdown file per source video. Cloudflare Pages Git integration builds the static site from `main`.
+1. Windows Task Scheduler invokes `automation/run-daily.ps1` daily at 7 AM Eastern. It runs the installed Codex CLI's documented noninteractive `codex exec` command using the existing user configuration. `-p` means profile, not prompt.
+2. A deterministic Python helper discovers recent completed council meetings from the official Laurel TV channel. It selects titles and verifies the meeting date, then obtains captions with youtube-transcript-api. No media is downloaded. The default lookback is 45 days, with at most three unpublished candidates handled per run.
+3. Codex uploads local transcript files through the existing Google Drive connector without reading their bodies. Workspace Studio's folder starter invokes Ask Gemini with the triggering file link and saves a Google Doc in the separate archive folder. Web search is disabled.
+4. Codex reads only the generated archive Doc. `scripts/validate-summary.js` reads the local source privately and checks exact metadata, every timestamp, allowed links, and payload size. An unsupported timestamp blocks that summary; the agent must not repair it.
+5. Accepted summaries go through authenticated `gh api` to `repository_dispatch`. GitHub Actions validates and commits one Markdown file per video. Cloudflare Pages Git integration builds from `main`.
 
-## Evidence boundaries
+## Verified integration evidence
 
-- The user has verified Studio access and the listed actions. This does not by itself verify field-level behavior such as authenticated headers, JSON escaping, or `.txt` source reading.
-- The actual personal Studio webhook form was inspected on November 15, 2026: it has URL, method and plain-text payload, with no Authorization-header field. GitHub requires authenticated requests, so the direct integration cannot work through that form. Do not put a GitHub token in the URL, commit it, or reuse the local CLI's broad token in Studio.
-- The owner authorized exploring a publishing fallback, including a scheduled ChatGPT task. `studio-publisher/` implements Google's documented custom Apps Script step, which serializes JSON and sets headers without model usage. Its manifest was accepted by Apps Script, its private test deployment installed, and the custom action appeared in the personal Studio account on November 15, 2026. First-use OAuth consent, a dedicated repository-scoped credential, and live dispatch validation are still required. No unauthenticated public relay is substituted; no ChatGPT scheduled task is needed for this route.
-- Google does not provide a supported caption-download API for arbitrary third-party channels. The ANDROID InnerTube adapter is the explicitly requested exception and may fail even when a public transcript exists. Test it from Apps Script's actual egress before declaring Stage 1 operational; a local test cannot prove that.
-- Gemini subscription context-window claims do not establish the Studio step's practical file/input limits. Test a representative full council transcript. A successful short sample is insufficient.
-- Source upload dates can differ from meeting dates. Do not publish a date inferred only from upload time; ambiguous dates need review.
-- The initial site contains no fabricated meeting minutes. An empty archive is expected until a real transcript has completed the flow.
+On November 16, 2026, a real November 9 council transcript automatically produced an archive Doc, passed source validation, completed the publishing workflow, and appeared on the public Pages site. Another generated summary contained a timestamp absent from its source and was correctly rejected. Timestamp validation does not prove every statement in a summary; these remain clearly labeled unofficial AI-generated summaries.
 
-## Official references
+Apps Script's YouTube metadata access works, but its anonymous ANDROID InnerTube caption request returned `LOGIN_REQUIRED` with no tracks for completed public recordings. No Apps Script polling trigger is enabled. The local collector is the selected source path, as authorized by the owner.
 
-- [Apps Script CLI](https://developers.google.com/apps-script/guides/clasp)
-- [Advanced Google services](https://developers.google.com/apps-script/guides/services/advanced)
-- [Apps Script quotas](https://developers.google.com/apps-script/guides/services/quotas)
-- [YouTube channels.list and forHandle](https://developers.google.com/youtube/v3/docs/channels/list)
-- [YouTube playlistItems.list](https://developers.google.com/youtube/v3/docs/playlistItems/list)
-- [YouTube videos resource and livestream details](https://developers.google.com/youtube/v3/docs/videos)
-- [Caption-download authorization](https://developers.google.com/youtube/v3/docs/captions/download)
+The personal Studio webhook UI has no custom-header field, so it cannot directly authenticate to GitHub. An optional custom Apps Script publishing step was installed and authorized during exploration, but the active Studio flow has only the folder starter, Ask Gemini, and Create a Doc. No publisher PAT is configured; the scheduled CLI uses the existing GitHub login.
+
+The schedule depends on this Windows user being signed in, the computer being available, and existing connector/CLI sessions remaining valid. Unavailable captions and pending Docs are retried later without duplicate uploads. Private `.local` logs may contain generated summaries, but must never contain raw transcript bodies.
+
+## Primary references
+
+- [Codex noninteractive mode](https://developers.openai.com/codex/noninteractive/)
+- [youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - [Studio starters and steps](https://support.google.com/workspace-studio/table/17176961)
-- [Studio webhook configuration](https://support.google.com/workspace-studio/answer/16521900)
 - [Create repository dispatch event](https://docs.github.com/en/rest/repos/repos#create-a-repository-dispatch-event)
 - [Cloudflare Pages Git integration](https://developers.cloudflare.com/pages/configuration/git-integration/)
-- [Cloudflare Pages limits](https://developers.cloudflare.com/pages/platform/limits/)
