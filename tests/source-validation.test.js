@@ -54,6 +54,35 @@ test('rejects the observed unsupported [00:15:17] marker without changing it', (
   });
 });
 
+test('rejects malformed bracketed time tokens instead of silently ignoring them', () => {
+  for (const [token, expected] of [
+    ['[016:56]', '016:56'],
+    ['[16:56]', '16:56'],
+    ['[00:16:56.2]', '00:16:56.2'],
+    ['[1:02:03]', '1:02:03'],
+    ['[00:99:00]', '00:99:00'],
+    ['[ 00:16:56]', '00:16:56'],
+    ['[00:16:56 ]', '00:16:56']
+  ]) {
+    const result = validateSummary(source, minutes.replace('[00:15:16]', token));
+    assert.deepEqual(result, {
+      ok: false,
+      reason: 'timestamp_format_invalid',
+      invalid_timestamps: [expected]
+    });
+  }
+});
+
+test('accepts only valid source markers while allowing names and ordinary link labels', () => {
+  const text = minutes.replace(
+    'The meeting continued.',
+    'The clerk [name uncertain] continued at [topic: 2026](https://www.youtube.com/watch?v=abcdefghijk).'
+  );
+  assert.equal(validateSummary(source, text).ok, true);
+  assert.equal(validateSummary(source, minutes.replace('[00:15:16]', '[00:99:00]')).reason,
+    'timestamp_format_invalid');
+});
+
 test('requires source metadata and verified source dates to match the summary', () => {
   assert.equal(validateSummary(source.replace('date_verified: "true"', 'date_verified: "false"'), minutes).reason,
     'source_date_unverified');

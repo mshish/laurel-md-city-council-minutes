@@ -124,8 +124,28 @@ function hasExactKeys(value, expected) {
 function markerSet(text) {
   const markers = new Set();
   const expression = /\[(\d{2}:\d{2}:\d{2})\]/g;
-  for (const match of text.matchAll(expression)) markers.add(match[1]);
+  for (const match of text.matchAll(expression)) {
+    if (isValidTimestamp(match[1])) markers.add(match[1]);
+  }
   return markers;
+}
+
+function isValidTimestamp(value) {
+  return /^\d{2}:[0-5]\d:[0-5]\d$/.test(value);
+}
+
+function findMalformedTimestamps(summaryBody) {
+  const invalid = [];
+  const seen = new Set();
+  const candidates = /\[(\s*[0-9][0-9:.\s]*)\]/g;
+  for (const match of summaryBody.matchAll(candidates)) {
+    const rawTimestamp = match[1];
+    const timestamp = rawTimestamp.trim();
+    if (!timestamp.includes(':') || isValidTimestamp(rawTimestamp) || seen.has(timestamp)) continue;
+    invalid.push(timestamp);
+    seen.add(timestamp);
+  }
+  return invalid;
 }
 
 function findInvalidTimestamps(summaryBody, sourceBody) {
@@ -177,6 +197,9 @@ export function validateSummary(sourceText, minutesText) {
   for (const field of SUMMARY_FIELDS) {
     if (minutes.metadata[field] !== source.metadata[field]) return failure('source_metadata_mismatch');
   }
+
+  const malformedTimestamps = findMalformedTimestamps(minutes.body);
+  if (malformedTimestamps.length) return failure('timestamp_format_invalid', malformedTimestamps);
 
   const invalidTimestamps = findInvalidTimestamps(minutes.body, source.body);
   if (invalidTimestamps.length) return failure('timestamp_not_in_source', invalidTimestamps);
