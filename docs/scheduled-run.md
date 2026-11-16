@@ -31,6 +31,8 @@ The wrapper starts `codex exec --approve-for-me --json`, sends `automation\promp
 
 Run artifacts are kept under `.local\runs\<run-id>\`; cached transcript files are under `.local\transcripts\`. Both paths are ignored by Git and may contain private source or generated-summary material. The private Codex JSONL log can contain the generated Doc text returned by the Drive connector. It must remain local; raw transcript text is not printed to console or placed in Codex's context. The final status contains only counts.
 
+GitHub CLI commands use the normal `require_escalated` tool approval path because the workspace sandbox cannot read the existing per-user GitHub CLI configuration. Automatic review decides those requests; the workflow must stop if review rejects one. Credentials are never copied or exposed.
+
 The workflow checks the configured folders and `main` before acting. It reuses existing Drive source files, retries pending archive Docs, skips video IDs already published, validates every timestamp locally, writes a dispatch-attempt marker before submitting, and will not resend a dispatch with an uncertain result. A successful GitHub API response is not proof of a published commit or a deployed Pages build.
 
 ## Register the daily task
