@@ -1,0 +1,58 @@
+{
+  "timeZone": "America/New_York",
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/script.external_request"
+  ],
+  "addOns": {
+    "common": {
+      "name": "Laurel Minutes Publisher",
+      "useLocaleFromApp": true
+    },
+    "studio": {
+      "flows": {
+        "workflowElements": [
+          {
+            "id": "laurelMinutesPublisher",
+            "state": "ACTIVE",
+            "name": "Publish Laurel meeting minutes",
+            "description": "Sends generated Markdown minutes to the Laurel minutes repository after validating source metadata.",
+            "workflowAction": {
+              "inputs": [
+                {
+                  "id": "markdown",
+                  "description": "The complete Markdown output from Ask Gemini, including title, date, and video_id frontmatter.",
+                  "cardinality": "SINGLE",
+                  "dataType": {
+                    "basicType": "STRING"
+                  }
+                }
+              ],
+              "outputs": [
+                {
+                  "id": "status",
+                  "description": "Dispatch status; accepted means GitHub accepted the event.",
+                  "cardinality": "SINGLE",
+                  "dataType": {
+                    "basicType": "STRING"
+                  }
+                },
+                {
+                  "id": "source_id",
+                  "description": "YouTube video ID for the source minutes.",
+                  "cardinality": "SINGLE",
+                  "dataType": {
+                    "basicType": "STRING"
+                  }
+                }
+              ],
+              "onConfigFunction": "onConfigPublishMinutes",
+              "onExecuteFunction": "onExecutePublishMinutes"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

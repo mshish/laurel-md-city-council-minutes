@@ -1,0 +1,7 @@
+{
+  "name": "laurel-meeting-transcript-apps-script",
+  "private": true,
+  "scripts": {
+    "test": "node tests/poll.test.cjs"
+  }
+}

@@ -1,0 +1,80 @@
+name: Publish meeting minutes
+
+on:
+  repository_dispatch:
+    types: [publish-minutes]
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  verify:
+    if: github.event_name != 'repository_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Run JavaScript tests
+        run: npm test
+      - name: Build the static site
+        run: npm run build
+
+  publish:
+    if: github.event.action == 'publish-minutes'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: publish-minutes-main
+      queue: max
+      cancel-in-progress: false
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run JavaScript tests
+        run: npm test
+
+      - name: Validate and write minutes
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: node scripts/ingest-dispatch.js
+
+      - name: Build the published content
+        run: npm run build
+
+      - name: Commit minutes to main
+        run: |
+          git add -- src/content/meetings
+          if git diff --cached --quiet; then
+            echo "No content changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Add council minutes from dispatch"
+          git push origin HEAD:main

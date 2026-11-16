@@ -1,0 +1,4 @@
+# Paths are relative to rootDir (apps-script), per Google's clasp documentation.
+**/**
+!Code.gs
+!appsscript.json

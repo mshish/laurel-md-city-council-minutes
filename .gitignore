@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.clasp.json
+.clasprc.json
+.env
+.env.*
+!.env.example
+.playwright-mcp/
+.playwright-cli/
+*.log
+.local/
