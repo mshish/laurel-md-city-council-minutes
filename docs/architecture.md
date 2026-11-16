@@ -10,7 +10,7 @@ The goal is next-morning, transcript-only unofficial summaries using existing Ch
 
 ## Verified integration evidence
 
-On November 16, 2026, a real November 9 council transcript automatically produced an archive Doc, passed source validation, completed the publishing workflow, and appeared on the public Pages site. Another generated summary contained a timestamp absent from its source and was correctly rejected. Timestamp validation does not prove every statement in a summary; these remain clearly labeled unofficial AI-generated summaries.
+On November 16, 2026, a real November 9 council transcript automatically produced an archive Doc, passed source validation, completed the publishing workflow, and appeared on the public Pages site. A subsequent real Task Scheduler run discovered six recent meetings, skipped the published video, collected and uploaded two new transcripts, and retrieved their Studio archive Docs. All three selected summaries (including an older archive) contained unsupported timestamps and were held; it submitted no dispatches. The task completed with exit code zero because the workflow ran correctly, so inspect its private result/status files for publication and validation outcomes. Timestamp validation does not prove every statement in a summary; these remain clearly labeled unofficial AI-generated summaries.
 
 Apps Script's YouTube metadata access works, but its anonymous ANDROID InnerTube caption request returned `LOGIN_REQUIRED` with no tracks for completed public recordings. No Apps Script polling trigger is enabled. The local collector is the selected source path, as authorized by the owner.
 
