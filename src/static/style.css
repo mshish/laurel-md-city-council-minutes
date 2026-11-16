@@ -149,6 +149,7 @@ h1 { max-width: 18ch; margin: 0; font-size: clamp(2.35rem, 6vw, 4.4rem); letter-
 .flag-link { font-size: .85rem; font-weight: 700; }
 
 .page-nav { display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem 1rem; margin: 2rem 0 0; padding: .7rem 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: .88rem; }
+.prose > .page-nav:first-child { margin-top: 0; border-top: 0; }
 .page-nav-title { color: var(--muted); font-size: .74rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .page-nav-link { font-weight: 650; text-decoration: none; }
 .page-nav-link:hover { text-decoration: underline; }
