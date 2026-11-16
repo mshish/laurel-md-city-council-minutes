@@ -83,7 +83,7 @@ async function main() {
     content: `<section class="hero" aria-labelledby="page-title">
   <p class="eyebrow">Laurel, Maryland</p>
   <h1 id="page-title">City Council meeting summaries</h1>
-  <p class="hero-copy">Browse concise, searchable-by-date summaries of council meetings and follow every summary back to its recording.</p>
+  <p class="hero-copy">Browse concise summaries by meeting date and follow each one back to its source recording.</p>
 </section>
 <section class="archive" aria-labelledby="archive-title">
   <div class="section-heading"><div><p class="eyebrow">The archive</p><h2 id="archive-title">Recent meetings</h2></div><p class="count">${meetings.length} ${meetings.length === 1 ? 'summary' : 'summaries'}</p></div>

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -86,7 +86,7 @@ test('serializes stable source metadata and reads it back for site generation', 
   assert.match(serialized, /Unofficial AI-generated summary/);
 });
 
-test('publishing is idempotent and refuses a conflicting replacement', async (t) => {
+test('publishing is idempotent per video and refuses changed metadata or content', async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'laurel-minutes-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const payload = validatePayload(dispatch());
@@ -97,6 +97,19 @@ test('publishing is idempotent and refuses a conflicting replacement', async (t)
   assert.equal(created.created, true);
   assert.equal(repeated.created, false);
   assert.equal(await readFile(savedPath, 'utf8'), original);
+
+  const changedTitle = validatePayload(dispatch({
+    title: 'Changed title test fixture',
+    markdown: markdown.replace(`title: "${title}"`, 'title: "Changed title test fixture"'),
+  }));
+  const changedDate = validatePayload(dispatch({
+    date: '2026-11-16',
+    markdown: markdown.replace('date: "2026-11-15"', 'date: "2026-11-16"'),
+  }));
+  await assert.rejects(persistPayload(changedTitle, root), /second entry for source video/);
+  await assert.rejects(persistPayload(changedDate, root), /second entry for source video/);
+  assert.deepEqual(await readdir(path.dirname(savedPath)), [path.basename(savedPath)]);
+
   const changed = validatePayload(dispatch({ markdown: `${frontmatter()}\n\n# Changed test fixture.\n` }));
   await assert.rejects(persistPayload(changed, root), /Refusing to replace existing minutes/);
 });

@@ -1,4 +1,4 @@
-import { readFile, mkdir, writeFile, realpath, lstat } from 'node:fs/promises';
+import { readFile, mkdir, writeFile, realpath, lstat, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { stringify } from 'yaml';
@@ -22,6 +22,13 @@ export async function persistPayload(payload, root = projectRoot) {
   const realRoot = await realpath(absoluteRoot);
   const realMeetings = await realpath(meetingsDir);
   if (!realMeetings.startsWith(`${realRoot}${path.sep}`)) throw new Error('Meetings directory resolves outside the repository');
+
+  const sourceSuffix = `-${validated.video_id}.md`;
+  const priorSourceFiles = (await readdir(meetingsDir, { withFileTypes: true }))
+    .filter((entry) => entry.name.endsWith(sourceSuffix));
+  if (priorSourceFiles.length > 1 || priorSourceFiles.some((entry) => entry.name !== path.basename(relative))) {
+    throw new Error(`Refusing to publish a second entry for source video ${validated.video_id}`);
+  }
 
   const content = serializeMeeting(validated);
   try {
