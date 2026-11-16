@@ -4,7 +4,7 @@ The Task Scheduler job runs the workflow as the signed-in Windows user at 7:00 A
 
 ## Before the first run
 
-1. Configure `.local/setup-state.json` locally. It is ignored by Git and must contain the repository, private transcript and archive folder IDs, readiness flags, plus absolute `python_path` and `node_path` values. Point these to the installed local-collector virtual environment and the official Node.js 22 executable under `.local/tools/node22`. Do not put credentials in the file.
+1. Configure `.local/setup-state.json` locally. It is ignored by Git and must contain the repository, private transcript and archive folder IDs, readiness flags, plus absolute `python_path` and `node_path` values. Point these to the installed local-collector virtual environment and the official Node.js 22 executable under `.local/tools/node22`. Do not put credentials in the file. The wrapper validates the two folder IDs and injects them into the Codex prompt via stdin; it does not print them.
 2. Confirm `collector_configured`, `collector_authorized`, and `studio_flow_enabled` are all `true`. The Studio flow should be **When an item is added to the private transcript folder → Ask Gemini → Create Google Doc in the archive folder**. The separate publisher Apps Script and any publisher PAT are not used.
 3. Install the local collector dependencies in its virtual environment. From the repository root:
 
@@ -29,7 +29,7 @@ From the repository root, use the installed native Codex CLI path and the curren
 
 The wrapper starts `codex exec --approve-for-me --json`, sends `automation\prompt.md` through standard input, and applies a 60-minute timeout. The automatic review path retains Codex's workspace-write sandbox; the wrapper does not use `--ask-for-approval never` or the dangerous sandbox bypass.
 
-Run artifacts are kept under `.local\runs\<run-id>\`; cached transcript files are under `.local\transcripts\`. Both paths are ignored by Git and may contain private source or generated-summary material. The private Codex JSONL log can contain the generated Doc text returned by the Drive connector. It must remain local; raw transcript text is not printed to console or placed in Codex's context. The final status contains only counts.
+Run artifacts are kept under `.local\runs\<run-id>\`; cached transcript files are under `.local\transcripts\`. Both paths are ignored by Git and may contain private source or generated-summary material. The private Codex JSONL log can contain the injected folder IDs in the prompt/connector calls and generated Doc text returned by the Drive connector. It must remain local; raw transcript text is not printed to console or placed in Codex's context. The final status contains only counts.
 
 GitHub CLI commands use the normal `require_escalated` tool approval path because the workspace sandbox cannot read the existing per-user GitHub CLI configuration. Automatic review decides those requests; the workflow must stop if review rejects one. Credentials are never copied or exposed.
 

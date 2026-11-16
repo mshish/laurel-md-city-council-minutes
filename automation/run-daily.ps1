@@ -11,6 +11,19 @@ $ErrorActionPreference = 'Stop'
 
 $resolvedRoot = (Resolve-Path -LiteralPath $RepositoryRoot -ErrorAction Stop).Path
 $resolvedCodex = (Resolve-Path -LiteralPath $CodexPath -ErrorAction Stop).Path
+$setupStatePath = Join-Path $resolvedRoot '.local\setup-state.json'
+try {
+    $setupState = [System.IO.File]::ReadAllText($setupStatePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json -ErrorAction Stop
+} catch {
+    throw 'Private setup state is missing or invalid JSON.'
+}
+$transcriptFolderId = [string]$setupState.transcript_folder_id
+$archiveFolderId = [string]$setupState.archive_folder_id
+if ($transcriptFolderId -notmatch '\A[A-Za-z0-9_-]+\z' -or
+    $archiveFolderId -notmatch '\A[A-Za-z0-9_-]+\z') {
+    throw 'Configured private Drive folder references are missing or invalid.'
+}
+
 $promptPath = Join-Path $PSScriptRoot 'prompt.md'
 if (-not (Test-Path -LiteralPath $promptPath -PathType Leaf)) {
     throw "Codex prompt not found at $promptPath"
@@ -27,9 +40,12 @@ $resultPath = Join-Path $runDirectory 'result.txt'
 $promptText = [System.IO.File]::ReadAllText($promptPath, [System.Text.Encoding]::UTF8)
 $promptText = $promptText.Replace('{{RUN_ID}}', $runId).Replace('{{RUN_DIR}}', $runDirectory)
 $promptText = $promptText.Replace('<run-id>', $runId).Replace('<run-dir>', $runDirectory)
+$promptText = $promptText.Replace('{{TRANSCRIPT_FOLDER_ID}}', $transcriptFolderId)
+$promptText = $promptText.Replace('{{ARCHIVE_FOLDER_ID}}', $archiveFolderId)
 if ($promptText.Contains('{{RUN_ID}}') -or $promptText.Contains('{{RUN_DIR}}') -or
-    $promptText.Contains('<run-id>') -or $promptText.Contains('<run-dir>')) {
-    throw 'The automation prompt contains an unresolved run placeholder.'
+    $promptText.Contains('<run-id>') -or $promptText.Contains('<run-dir>') -or
+    $promptText.Contains('{{TRANSCRIPT_FOLDER_ID}}') -or $promptText.Contains('{{ARCHIVE_FOLDER_ID}}')) {
+    throw 'The automation prompt contains an unresolved private context placeholder.'
 }
 
 $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
