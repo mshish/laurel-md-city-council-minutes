@@ -112,6 +112,10 @@ test('promotes only exact known section labels to second-level headings', () => 
         namedStyleType: 'NORMAL_TEXT',
         isListItem: false
       },
+      { text: 'At a glance', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'At a glance, the meeting covered these topics.', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'Worth a closer look', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'Worth a closer look at these details.', namedStyleType: 'NORMAL_TEXT', isListItem: false },
       { text: 'Meeting information', namedStyleType: 'NORMAL_TEXT', isListItem: false },
       { text: 'The Meeting information section lists attendance.', namedStyleType: 'NORMAL_TEXT', isListItem: false },
       { text: 'Decisions and votes', namedStyleType: 'NORMAL_TEXT', isListItem: false },
@@ -123,7 +127,27 @@ test('promotes only exact known section labels to second-level headings', () => 
   };
   const result = minutesFromArchiveJson(JSON.stringify(archive), source);
   assert.equal(result.ok, true);
-  assert.match(result.minutesText, /## Meeting information\nThe Meeting information section lists attendance\.\n## Decisions and votes\n## Discussion by agenda item\n## Public comment\n## Action items and follow-up\n## Transcript limitations/);
+  assert.match(result.minutesText, /## At a glance\nAt a glance, the meeting covered these topics\.\n## Worth a closer look\nWorth a closer look at these details\.\n## Meeting information\nThe Meeting information section lists attendance\.\n## Decisions and votes\n## Discussion by agenda item\n## Public comment\n## Action items and follow-up\n## Transcript limitations/);
+});
+
+test('restores only exact callout-label prefixes from the archived plain text', () => {
+  const archive = {
+    paragraphs: [
+      {
+        text: 'title: "Mayor and City Council Meeting" date: "2026-11-14" video_id: "abcdefghijk"',
+        namedStyleType: 'NORMAL_TEXT',
+        isListItem: false
+      },
+      { text: 'Look closer: At [00:15:16], the Council discussed the budget.', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'The Resident impact: label appears later in this sentence.', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'Resident impact: At [00:22:09], the Council discussed the timeline.', namedStyleType: 'NORMAL_TEXT', isListItem: false },
+      { text: 'Open question: At [00:15:16], no date was stated.', namedStyleType: 'NORMAL_TEXT', isListItem: false }
+    ]
+  };
+  const result = minutesFromArchiveJson(JSON.stringify(archive), source);
+  assert.equal(result.ok, true);
+  assert.match(result.minutesText,
+    /> \*\*Look closer:\*\* At \[00:15:16\], the Council discussed the budget\.\nThe Resident impact: label appears later in this sentence\.\n> \*\*Resident impact:\*\* At \[00:22:09\], the Council discussed the timeline\.\n> \*\*Open question:\*\* At \[00:15:16\], no date was stated\./);
 });
 
 test('CLI writes the compact dispatch and canonical file only after source validation', async () => {

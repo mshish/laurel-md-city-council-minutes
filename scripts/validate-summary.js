@@ -9,12 +9,14 @@ const MAX_SUMMARY_BYTES = 45_000;
 const SOURCE_FIELDS = ['date', 'date_source', 'date_verified', 'title', 'video_id'];
 const SUMMARY_FIELDS = ['date', 'title', 'video_id'];
 const SECTION_LABELS = new Set([
+  'At a glance',
   'Meeting information',
   'Decisions and votes',
   'Discussion by agenda item',
   'Public comment',
   'Action items and follow-up',
-  'Transcript limitations'
+  'Transcript limitations',
+  'Worth a closer look'
 ]);
 
 function splitFrontmatter(source, label) {
@@ -64,6 +66,8 @@ function paragraphMarkdown(paragraph) {
     throw new Error('archive_invalid');
   }
   const text = paragraph.text;
+  const callout = /^(Look closer|Resident impact|Open question): (.*)$/.exec(text);
+  if (callout) return `> **${callout[1]}:** ${callout[2]}`;
   if (SECTION_LABELS.has(text)) return `## ${text}`;
   const heading = /^HEADING_([1-6])$/.exec(paragraph.namedStyleType);
   if (heading && !paragraph.isListItem) return `${'#'.repeat(Number(heading[1]))} ${text}`;

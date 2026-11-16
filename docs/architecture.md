@@ -4,7 +4,7 @@ The goal is next-morning, transcript-only unofficial summaries using existing Ch
 
 1. Windows Task Scheduler invokes `automation/run-daily.ps1` daily at 7 AM Eastern. It runs the installed Codex CLI's documented noninteractive `codex exec` command using the existing user configuration. `-p` means profile, not prompt.
 2. A deterministic Python helper discovers recent completed council meetings from the official Laurel TV channel. It selects titles and verifies the meeting date, then obtains captions with youtube-transcript-api. No media is downloaded. The default lookback is 45 days, with at most three unpublished candidates handled per run.
-3. Codex uploads local transcript files through the existing Google Drive connector without reading their bodies. Workspace Studio's folder starter invokes Ask Gemini with the triggering file link and saves a Google Doc in the separate archive folder. Web search is disabled.
+3. Codex uploads local transcript files through the existing Google Drive connector without reading their bodies. Workspace Studio's folder starter invokes Ask Gemini with the triggering file link and saves a Google Doc in the separate archive folder. Web search is enabled only for official Laurel name and role verification under the prompt; the transcript remains the evidence for meeting events.
 4. Codex reads only the generated archive Doc. `scripts/validate-summary.js` reads the local source privately and checks exact metadata, every timestamp, allowed links, and payload size. An unsupported timestamp blocks that summary; the agent must not repair it.
 5. Accepted summaries go through authenticated `gh api` to `repository_dispatch`. GitHub Actions validates and commits one Markdown file per video. Cloudflare Pages Git integration builds from `main`.
 
@@ -26,3 +26,7 @@ The schedule depends on this Windows user being signed in, the computer being av
 - [Studio starters and steps](https://support.google.com/workspace-studio/table/17176961)
 - [Create repository dispatch event](https://docs.github.com/en/rest/repos/repos#create-a-repository-dispatch-event)
 - [Cloudflare Pages Git integration](https://developers.cloudflare.com/pages/configuration/git-integration/)
+
+## Presentation and editorial contract
+
+The renderer owns color, layout, navigation, timestamp links, and callout styling. Gemini emits structured Markdown, not HTML or CSS. Callouts identify transcript-supported facts, practical resident implications, and open questions without assigning motives or declaring procedural violations. Official city directories may resolve name spelling and roles; they do not establish attendance or who spoke. Unverified names use the brief [name uncertain] marker. One compact site footer provides the AI notice; specific transcript limitations remain factual content.

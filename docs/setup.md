@@ -13,7 +13,7 @@ Register the task only after testing collection, connector upload, Studio output
 The active flow has three steps:
 
 1. **When an item is added to a folder**: select the private incoming-transcripts folder.
-2. **Ask Gemini**: use [the prompt](gemini-prompt.md) with the starter's dynamic file-link variable. Enable Workspace sources and disable web search. Verify it reads a representative full transcript.
+2. **Ask Gemini**: use [the prompt](gemini-prompt.md) with the starter's dynamic file-link variable. Enable Workspace sources and web search; the prompt limits external lookup to official Laurel directories for name spelling and roles, never meeting facts. Verify it reads a representative full transcript.
 3. **Create a Doc**: name it `Laurel Council Minutes — <starter item name>`, use Gemini's generated content, and select the separate private archive folder.
 
 Keep archive Docs outside the input folder to prevent recursive triggering. Enable the flow before setting `studio_flow_enabled` true. The scheduled run fetches generated Docs only and validates them against the local source before publication. `SOURCE_NOT_READY`, metadata mismatches, and unsupported timestamps must remain blocked.
