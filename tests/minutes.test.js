@@ -205,7 +205,7 @@ test('meeting page renders one reading column with flags linked to their agenda 
   assert.doesNotMatch(html, /Topic: Agenda item/);
   assert.match(html, /<a href="#agenda-item-road-contract" class="flag-link">/);
   assert.match(html, /<a href="#flag-road-contract" class="flag-link">Flagged above/);
-  assert.match(html, /<span class="result result-passed">Motion carries<\/span>/);
+  assert.match(html, /<span class="result result-passed">✓ Motion carries<\/span>/);
   assert.match(html, /<span class="result result-unclear">Result not stated in transcript\.<\/span>/);
   assert.ok(html.indexOf('At a glance') < html.indexOf('Worth a closer look'));
   assert.ok(html.indexOf('Worth a closer look') < html.indexOf('aria-label="On this page"'));
@@ -219,8 +219,21 @@ test('legacy one-line agenda and decision summaries become titled items', () => 
     '## Discussion by agenda item', '', '- Road Contract ([00:02:00] - [00:03:00]): Staff presented the bid.', '',
   ].join('\n');
   const html = renderMarkdown(source, videoId);
-  assert.match(html, /<h3>Road Contract \(LA 1\)<\/h3><span class="result result-passed">Motion carries<\/span>/);
+  assert.match(html, /<h3>Road Contract \(LA 1\)<\/h3><span class="result result-passed">✓ Motion carries<\/span>/);
   assert.match(html, /<span class="field-label">Vote<\/span> Roll call vote: A - Yes/);
   assert.match(html, /<h3 id="agenda-road-contract">Road Contract<\/h3>/);
   assert.match(html, /<p>Staff presented the bid\.<\/p>/);
+});
+
+test('agenda items show their kind, attached vote result, and one bullet per sentence', () => {
+  const source = [
+    '## Decisions and votes', '', '- Road Contract (LA 1): Motion to award the contract.',
+    '- Recorded result: Motion carries', '- Timestamp: [00:02:00] - [00:03:00]', '',
+    '## Discussion by agenda item', '',
+    '- Bid Recommendation: Road Contract ([00:02:00] - [00:03:00]): Opened at 6:19 p.m. Mr. Adrian G. Smith presented a $279,155.99 bid. It was approved.', '',
+  ].join('\n');
+  const html = renderMarkdown(source, videoId);
+  assert.match(html, /<li class="agenda-item kind-money">/);
+  assert.match(html, /<span class="kind-chip"><span aria-hidden="true">💵<\/span> Spending<\/span><span class="result result-passed">✓ Motion carries<\/span>/);
+  assert.match(html, /<ul class="sentence-list"><li>Opened at 6:19 p\.m\.<\/li><li>Mr\. Adrian G\. Smith presented a <span class="money">\$279,155\.99<\/span> bid\.<\/li><li>It was approved\.<\/li><\/ul>/);
 });

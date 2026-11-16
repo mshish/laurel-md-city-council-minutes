@@ -370,6 +370,13 @@ function markerSeconds(text) {
   return values;
 }
 
+const MONEY = /\$\d[\d,]*(?:\.\d+)?/g;
+
+// Dollar amounts are the figures residents scan for, so they get their own span.
+function markMoney(escaped) {
+  return escaped.replace(MONEY, (amount) => `<span class="money">${amount}</span>`);
+}
+
 function linkTimestampText(text, videoId, escape) {
   let html = '';
   let last = 0;
@@ -378,11 +385,27 @@ function linkTimestampText(text, videoId, escape) {
     const seconds = Number(match[3]);
     if (minutes > 59 || seconds > 59) continue;
     const total = Number(match[1]) * 3600 + minutes * 60 + seconds;
-    html += escape(text.slice(last, match.index));
+    html += markMoney(escape(text.slice(last, match.index)));
     html += `<a href="${escape(`https://www.youtube.com/watch?v=${videoId}&t=${total}`)}">${escape(match[0])}</a>`;
     last = match.index + match[0].length;
   }
-  return html + escape(text.slice(last));
+  return html + markMoney(escape(text.slice(last)));
+}
+
+// Breaks a paragraph into its sentences without dropping or changing any text.
+// Titles, initials and street abbreviations do not end a sentence.
+const NOT_SENTENCE_END = /(?:\b(?:Mr|Mrs|Ms|Dr|St|Jr|Sr|No|Nos|Inc|Co|Corp|Ltd|Lt|Sgt|Capt|Cpl|Gov|Sen|Rep|Del|Hon|Ave|Rd|Blvd|Mt|vs|approx|U\.S)|(?:^|[\s(])[A-Z])\.$/;
+
+function splitSentences(text) {
+  const parts = [];
+  let start = 0;
+  for (const match of text.matchAll(/[.!?]["')\]]?\s+(?=["(\[]?[A-Z0-9])/g)) {
+    if (NOT_SENTENCE_END.test(text.slice(start, match.index + 1))) continue;
+    parts.push(text.slice(start, match.index + match[0].length).trim());
+    start = match.index + match[0].length;
+  }
+  parts.push(text.slice(start).trim());
+  return parts.filter(Boolean);
 }
 
 function lineText(inline) {
@@ -484,6 +507,17 @@ class PageRenderer {
     return linkTimestampText(text, this.videoId, this.esc);
   }
 
+  // Plain-text paragraphs with several sentences become a short bulleted list.
+  sentences(inline, className = 'sentence-list') {
+    const children = inline?.children ?? [];
+    if (!children.length || children.some((child) => child.type !== 'text' && child.type !== 'softbreak')) {
+      return `<p>${this.inline(inline)}</p>`;
+    }
+    const parts = splitSentences(children.map((child) => (child.type === 'text' ? child.content : ' ')).join(''));
+    if (parts.length < 2) return `<p>${this.inline(inline)}</p>`;
+    return `<ul class="${className}">${parts.map((part) => `<li>${this.linkedText(part)}</li>`).join('')}</ul>`;
+  }
+
   // Renders a block standalone; list-item paragraphs become ordinary paragraphs.
   block(block) {
     if (block.kind === 'line') return `<p>${this.inline(block.inline)}</p>`;
@@ -561,21 +595,30 @@ function resultTone(text) {
   return 'unclear';
 }
 
-function renderDecisions(blocks, page) {
-  const { intro, groups } = parseDecisions(blocks);
+// Splits "Motion carries (Roll call vote: ...)" into the result and its vote detail.
+function decisionResult(group) {
+  if (!group.fields.result) return null;
+  const text = lineText(group.fields.result);
+  const paren = text.indexOf(' (');
+  const split = paren > 0 && text.endsWith(')');
+  const label = split ? text.slice(0, paren) : text;
+  return { label, tone: resultTone(label), detail: split ? text.slice(paren + 2, -1) : '' };
+}
+
+function resultBadge(result, page) {
+  const mark = { passed: '✓ ', failed: '✕ ', unclear: '' }[result.tone];
+  return `<span class="result result-${result.tone}">${mark}${page.linkedText(result.label)}</span>`;
+}
+
+function renderDecisions(parsed, page) {
+  const { intro, groups } = parsed;
   if (!groups.length || groups.every((group) => !Object.keys(group.fields).length)) return null;
   const items = groups.map((group) => {
     const { fields } = group;
-    let badge = '';
+    const result = decisionResult(group);
     let voteDetail = fields.vote ? page.inline(fields.vote) : '';
-    if (fields.result) {
-      const text = lineText(fields.result);
-      const paren = text.indexOf(' (');
-      const split = paren > 0 && text.endsWith(')');
-      const label = split ? text.slice(0, paren) : text;
-      if (split && !voteDetail) voteDetail = page.linkedText(text.slice(paren + 2, -1));
-      badge = `<span class="result result-${resultTone(label)}">${page.linkedText(label)}</span>`;
-    }
+    if (result?.detail && !voteDetail) voteDetail = page.linkedText(result.detail);
+    const badge = result ? resultBadge(result, page) : '';
     const meta = [];
     if (fields.mover) meta.push(`Moved by ${page.inline(fields.mover)}`);
     if (fields.seconder) meta.push(`seconded by ${page.inline(fields.seconder)}`);
@@ -648,19 +691,54 @@ function parseAgenda(blocks, page) {
   return { intro, items };
 }
 
+// The kind is read from the agenda item's own title; it adds a label, never a claim.
+const AGENDA_KINDS = [
+  [/public (hearing|comment)|citizen comment/i, 'hearing', '📣', 'Public comment'],
+  [/ordinance/i, 'law', '📜', 'Ordinance'],
+  [/charter amendment/i, 'law', '📜', 'Charter amendment'],
+  [/resolution/i, 'law', '📜', 'Resolution'],
+  [/\b(bid|contract|agreement|purchase|award)/i, 'money', '💵', 'Spending'],
+  [/report|roll call|announcement|proclamation/i, 'reports', '🎙️', 'Reports'],
+];
+
+function agendaKind(title) {
+  const match = AGENDA_KINDS.find(([pattern]) => pattern.test(title));
+  return match ? { key: match[1], icon: match[2], label: match[3] } : null;
+}
+
+// A decision belongs to an agenda item when its first timestamp falls inside the item's range.
+function attachDecisions(items, groups) {
+  for (const group of groups) {
+    const result = decisionResult(group);
+    const start = markerSeconds(lineText(group.fields.time))[0];
+    if (!result || !Number.isSafeInteger(start)) continue;
+    // Adjacent items share a boundary second, so an item starting exactly at the vote wins.
+    const exact = items.filter((item) => item.start === start);
+    const owners = exact.length ? exact
+      : items.filter((item) => Number.isSafeInteger(item.start) && Number.isSafeInteger(item.end) && start >= item.start && start <= item.end);
+    if (owners.length === 1) (owners[0].results ??= []).push(result);
+  }
+}
+
 function renderAgenda(parsed, page) {
   const { intro, items } = parsed;
   if (!items.length) return null;
   const rendered = items.map((item) => {
     const { fields } = item;
+    const kind = agendaKind(item.title);
+    const chips = [
+      kind ? `<span class="kind-chip"><span aria-hidden="true">${kind.icon}</span> ${kind.label}</span>` : '',
+      ...(item.results ?? []).map((result) => resultBadge(result, page)),
+    ].join('');
     const when = item.legacyTimes
       ? item.legacyTimes.map((time) => page.linkedText(time)).join(' – ')
       : fields.time ? page.inline(fields.time) : '';
     const flags = (item.flags ?? []).map((id) => `<a class="flag-link" href="#${page.esc(id)}">Flagged above ↑</a>`).join(' ');
-    return `<li class="agenda-item${item.flags?.length ? ' agenda-item-flagged' : ''}">
+    return `<li class="agenda-item kind-${kind?.key ?? 'other'}${item.flags?.length ? ' agenda-item-flagged' : ''}">
 <div class="agenda-head"><h3 id="${page.esc(item.id)}">${page.esc(item.title)}</h3>${when ? `<span class="agenda-when">${when}</span>` : ''}</div>
+${chips ? `<p class="agenda-chips">${chips}</p>` : ''}
 ${flags ? `<p class="agenda-flags">${flags}</p>` : ''}
-${fields.what ? `<p>${page.inline(fields.what)}</p>` : ''}
+${fields.what ? page.sentences(fields.what) : ''}
 ${fields.outcome ? `<p class="agenda-outcome"><span class="field-label">Outcome</span> ${page.inline(fields.outcome)}</p>` : ''}
 ${fields.relevance ? `<p class="agenda-relevance"><span class="field-label">For residents</span> ${page.inline(fields.relevance)}</p>` : ''}
 ${item.extra.map((block) => page.block(block)).join('')}
@@ -746,6 +824,9 @@ function renderStructuredSections(tokens, page) {
   const byTitle = new Map(named.map((section) => [section.headingText.toLowerCase(), section]));
   const agendaSection = byTitle.get('discussion by agenda item');
   const agenda = agendaSection ? parseAgenda(sectionBlocks(agendaSection.tokens), page) : { intro: [], items: [] };
+  const decisionSection = byTitle.get('decisions and votes');
+  const decisions = decisionSection ? parseDecisions(sectionBlocks(decisionSection.tokens)) : { intro: [], groups: [] };
+  attachDecisions(agenda.items, decisions.groups);
 
   // Flags are rendered before agenda items so agenda items can link back to them.
   const bodies = new Map();
@@ -755,7 +836,7 @@ function renderStructuredSections(tokens, page) {
     const title = section.headingText.toLowerCase();
     if (section === worth) continue;
     let body = null;
-    if (title === 'decisions and votes') body = renderDecisions(sectionBlocks(section.tokens), page);
+    if (section === decisionSection) body = renderDecisions(decisions, page);
     else if (section === agendaSection) body = renderAgenda(agenda, page);
     else if (title === 'action items and follow-up') body = renderActions(sectionBlocks(section.tokens), page);
     bodies.set(section, body);
@@ -841,7 +922,7 @@ export function renderMarkdownWithToc(source, videoId, title = '') {
     allowedTags: ALLOWED_TAGS,
     allowedAttributes: {
       a: ['href', 'title', 'rel', 'target', 'class', 'aria-label'], h2: ['id', 'class'], h3: ['id', 'class'], blockquote: ['class', 'id'],
-      article: ['class', 'id'], div: ['class'], span: ['class'], section: ['class'], nav: ['aria-label', 'class'],
+      article: ['class', 'id'], div: ['class'], span: ['class', 'aria-hidden'], section: ['class'], nav: ['aria-label', 'class'],
       p: ['class'], li: ['class'], ol: ['class'], ul: ['class'],
     },
     allowedSchemes: ['https'],
