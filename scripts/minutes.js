@@ -693,17 +693,17 @@ function parseAgenda(blocks, page) {
 
 // The kind is read from the agenda item's own title; it adds a label, never a claim.
 const AGENDA_KINDS = [
-  [/public (hearing|comment)|citizen comment/i, 'hearing', '📣', 'Public comment'],
-  [/ordinance/i, 'law', '📜', 'Ordinance'],
-  [/charter amendment/i, 'law', '📜', 'Charter amendment'],
-  [/resolution/i, 'law', '📜', 'Resolution'],
-  [/\b(bid|contract|agreement|purchase|award)/i, 'money', '💵', 'Spending'],
-  [/report|roll call|announcement|proclamation/i, 'reports', '🎙️', 'Reports'],
+  [/public (hearing|comment)|citizen comment/i, 'hearing', 'Public comment'],
+  [/ordinance/i, 'law', 'Ordinance'],
+  [/charter amendment/i, 'law', 'Charter amendment'],
+  [/resolution/i, 'law', 'Resolution'],
+  [/\b(bid|contract|agreement|purchase|award)/i, 'money', 'Spending'],
+  [/report|roll call|announcement|proclamation/i, 'reports', 'Reports'],
 ];
 
 function agendaKind(title) {
   const match = AGENDA_KINDS.find(([pattern]) => pattern.test(title));
-  return match ? { key: match[1], icon: match[2], label: match[3] } : null;
+  return match ? { key: match[1], label: match[2] } : null;
 }
 
 // A decision belongs to an agenda item when its first timestamp falls inside the item's range.
@@ -727,7 +727,7 @@ function renderAgenda(parsed, page) {
     const { fields } = item;
     const kind = agendaKind(item.title);
     const chips = [
-      kind ? `<span class="kind-chip"><span aria-hidden="true">${kind.icon}</span> ${kind.label}</span>` : '',
+      kind ? `<span class="kind-chip">${kind.label}</span>` : '',
       ...(item.results ?? []).map((result) => resultBadge(result, page)),
     ].join('');
     const when = item.legacyTimes

@@ -234,6 +234,6 @@ test('agenda items show their kind, attached vote result, and one bullet per sen
   ].join('\n');
   const html = renderMarkdown(source, videoId);
   assert.match(html, /<li class="agenda-item kind-money">/);
-  assert.match(html, /<span class="kind-chip"><span aria-hidden="true">💵<\/span> Spending<\/span><span class="result result-passed">✓ Motion carries<\/span>/);
+  assert.match(html, /<span class="kind-chip">Spending<\/span><span class="result result-passed">✓ Motion carries<\/span>/);
   assert.match(html, /<ul class="sentence-list"><li>Opened at 6:19 p\.m\.<\/li><li>Mr\. Adrian G\. Smith presented a <span class="money">\$279,155\.99<\/span> bid\.<\/li><li>It was approved\.<\/li><\/ul>/);
 });

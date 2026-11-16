@@ -21,7 +21,7 @@ function page({ title, description, content, canonicalPath = '/' }) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="${escapeHtml(description)}">
-  <meta name="theme-color" content="#1463f3">
+  <meta name="theme-color" content="#15284a">
   <title>${escapeHtml(title)} · Laurel Council Minutes</title>
   <link rel="canonical" href="${canonicalPath}">
   <link rel="stylesheet" href="${CSS_PATH}">
